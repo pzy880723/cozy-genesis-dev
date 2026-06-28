@@ -153,38 +153,36 @@ function AssetsPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-[180px_1fr] gap-3.5">
-        <Panel>
-          <div className="p-2">
-            {KINDS.map((k) => {
-              const Icon = k.icon;
-              const active = (filters.kind ?? "all") === k.key;
-              return (
-                <button
-                  key={k.key}
-                  onClick={() => {
-                    setFilters((f) => ({ ...f, kind: k.key }));
-                    setVisibleCount(120);
-                  }}
-                  className={cn(
-                    "flex w-full items-center justify-between rounded-md px-3 py-2 text-sm font-semibold",
-                    active ? "bg-primary-soft text-primary" : "text-graphite hover:bg-secondary",
-                  )}
-                >
-                  <span className="flex items-center gap-2">
-                    <Icon className="h-4 w-4" />
-                    {k.label}
-                  </span>
-                  <span className="text-xs tabular-nums text-muted-foreground">
-                    {k.key === "all" ? (assets.data?.length ?? 0) : counts[k.key as string] ?? 0}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </Panel>
+      <div className="mb-3.5 flex flex-wrap items-center gap-1.5">
+        {KINDS.map((k) => {
+          const Icon = k.icon;
+          const active = (filters.kind ?? "all") === k.key;
+          const n = k.key === "all" ? (assets.data?.length ?? 0) : counts[k.key as string] ?? 0;
+          return (
+            <button
+              key={k.key}
+              onClick={() => {
+                setFilters((f) => ({ ...f, kind: k.key }));
+                setVisibleCount(120);
+              }}
+              className={cn(
+                "inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-semibold transition",
+                active
+                  ? "border-primary bg-primary-soft text-primary"
+                  : "border-border bg-white text-graphite hover:bg-secondary",
+              )}
+            >
+              <Icon className="h-3.5 w-3.5" />
+              {k.label}
+              <span className={cn("ml-0.5 rounded-full px-1.5 text-[10px] tabular-nums", active ? "bg-white/70 text-primary" : "bg-secondary text-muted-foreground")}>{n}</span>
+            </button>
+          );
+        })}
+        <span className="ml-auto text-xs font-semibold text-muted-foreground">共 {assets.data?.length ?? 0} 个</span>
+      </div>
 
-        <Panel title="素材" hint={`共 ${assets.data?.length ?? 0} 个`}>
+      <div>
+        <Panel>
           {assets.isLoading ? (
             <div className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
               {Array.from({ length: 8 }).map((_, i) => (
