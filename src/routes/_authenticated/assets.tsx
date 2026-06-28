@@ -246,6 +246,17 @@ function AssetsPage() {
                             <Play className="h-3 w-3" /> 视频
                           </div>
                         )}
+                        {/* 来源角标（手机/PC） */}
+                        <div
+                          className="pointer-events-none absolute left-1.5 bottom-1.5 flex h-5 items-center gap-0.5 rounded-full bg-black/55 px-1.5 text-[10px] font-semibold text-white"
+                          title={a.origin === "pc" ? "PC 端生成" : "手机端"}
+                        >
+                          {a.origin === "pc" ? (
+                            <><Monitor className="h-3 w-3" />PC</>
+                          ) : (
+                            <><Smartphone className="h-3 w-3" />手机</>
+                          )}
+                        </div>
                         {/* 放大入口 */}
                         <span className="pointer-events-none absolute right-1.5 top-1.5 flex h-7 w-7 items-center justify-center rounded-full bg-black/55 text-white opacity-0 transition group-hover:opacity-100">
                           <Maximize2 className="h-3.5 w-3.5" />
