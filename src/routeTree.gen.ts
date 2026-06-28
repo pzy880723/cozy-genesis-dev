@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as PublishRouteImport } from './routes/publish'
+import { Route as AutomationRouteImport } from './routes/automation'
 import { Route as AssetsRouteImport } from './routes/assets'
 import { Route as AigcRouteImport } from './routes/aigc'
 import { Route as IndexRouteImport } from './routes/index'
@@ -17,6 +18,11 @@ import { Route as IndexRouteImport } from './routes/index'
 const PublishRoute = PublishRouteImport.update({
   id: '/publish',
   path: '/publish',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AutomationRoute = AutomationRouteImport.update({
+  id: '/automation',
+  path: '/automation',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AssetsRoute = AssetsRouteImport.update({
@@ -39,12 +45,14 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/aigc': typeof AigcRoute
   '/assets': typeof AssetsRoute
+  '/automation': typeof AutomationRoute
   '/publish': typeof PublishRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/aigc': typeof AigcRoute
   '/assets': typeof AssetsRoute
+  '/automation': typeof AutomationRoute
   '/publish': typeof PublishRoute
 }
 export interface FileRoutesById {
@@ -52,20 +60,22 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/aigc': typeof AigcRoute
   '/assets': typeof AssetsRoute
+  '/automation': typeof AutomationRoute
   '/publish': typeof PublishRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/aigc' | '/assets' | '/publish'
+  fullPaths: '/' | '/aigc' | '/assets' | '/automation' | '/publish'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/aigc' | '/assets' | '/publish'
-  id: '__root__' | '/' | '/aigc' | '/assets' | '/publish'
+  to: '/' | '/aigc' | '/assets' | '/automation' | '/publish'
+  id: '__root__' | '/' | '/aigc' | '/assets' | '/automation' | '/publish'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AigcRoute: typeof AigcRoute
   AssetsRoute: typeof AssetsRoute
+  AutomationRoute: typeof AutomationRoute
   PublishRoute: typeof PublishRoute
 }
 
@@ -76,6 +86,13 @@ declare module '@tanstack/react-router' {
       path: '/publish'
       fullPath: '/publish'
       preLoaderRoute: typeof PublishRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/automation': {
+      id: '/automation'
+      path: '/automation'
+      fullPath: '/automation'
+      preLoaderRoute: typeof AutomationRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/assets': {
@@ -106,6 +123,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AigcRoute: AigcRoute,
   AssetsRoute: AssetsRoute,
+  AutomationRoute: AutomationRoute,
   PublishRoute: PublishRoute,
 }
 export const routeTree = rootRouteImport
