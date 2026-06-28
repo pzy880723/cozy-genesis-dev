@@ -1,77 +1,93 @@
-# 把本项目（First Steps）接入共享 Supabase 库 `narqwgwpqglathwtyevz`
+## 目标
 
-我搞反了方向。这个项目就是 First Steps，上一轮粘进来的手册是让**我在这里照着落地**的，不是让我去写给别人看。重新规划，直接动手。
-
-## 边界确认
-
-- **不**调用 `supabase--enable`（避免开新的独立库）。
-- **不**下发 service_role，所有写操作走 RLS + 用户 JWT。
-- types.ts 手动同步，本次首版需要您从共享库复制全文给我。
-
-## 我现在不能独立完成的两件事，需要您配合
-
-1. **anon / publishable key**：必须从共享库 Supabase Dashboard → Project Settings → API 复制 `anon public` key 给我，我用 `set_secret` 写入 `VITE_SUPABASE_PUBLISHABLE_KEY` + `SUPABASE_PUBLISHABLE_KEY`（VITE_ 前缀的也得走 secret 接口才能被前端读到）。
-2. **types.ts 首版**：从共享库 `src/integrations/supabase/types.ts` 整段粘给我，我覆盖落地。
-
-> 在拿到这两样之前，我先把不依赖它们的部分全部落地（client / 中间件 / 路由壳 / mock 清理）。types 未到位时 `Database` 类型用 `any` 占位临时编译过，等您贴 types 再一次替换。
-
-## 执行步骤（一次性把能做的全做了）
-
-### Step 1 — 写环境变量（占位 anon key，等您给）
-
-- `set_secret` 写入：
-  - `VITE_SUPABASE_URL=https://narqwgwpqglathwtyevz.supabase.co`
-  - `SUPABASE_URL=https://narqwgwpqglathwtyevz.supabase.co`
-  - `VITE_SUPABASE_PROJECT_ID=narqwgwpqglathwtyevz`
-  - `SUPABASE_PROJECT_ID=narqwgwpqglathwtyevz`
-- `VITE_SUPABASE_PUBLISHABLE_KEY` / `SUPABASE_PUBLISHABLE_KEY`：**等您给值后再 set**。
-
-### Step 2 — 新建 Supabase 集成文件
-
-- `src/integrations/supabase/client.ts`（浏览器端，默认 storageKey）
-- `src/integrations/supabase/types.ts`（**先放最小占位** `export type Database = any;`，等您贴真的覆盖）
-- `src/integrations/supabase/auth-attacher.ts`（client functionMiddleware，挂 bearer）
-- `src/integrations/supabase/auth-middleware.ts`（`requireSupabaseAuth`，anon key + 用户 bearer，**不用 service_role**）
-
-### Step 3 — 改 `src/start.ts`
-
-把 `attachSupabaseAuth` append 到 `functionMiddleware`，保留原 `errorMiddleware`。
-
-### Step 4 — 路由壳：登录 + 受保护布局
-
-- 新建 `src/routes/auth.tsx`（公共登录页：邮箱密码 + Google via lovable broker）
-- 新建 `src/routes/_authenticated/route.tsx`（`ssr: false` + `supabase.auth.getUser()` 守门）
-- 把现有业务路由从 `src/routes/` 移到 `src/routes/_authenticated/`：`index.tsx` / `assets.tsx` / `aigc.tsx` / `publish.tsx` / `accounts.tsx` / `automation.tsx` / `settings.tsx`
-- 在 `__root.tsx` 的 RootComponent 里加 `onAuthStateChange` 监听（仅 SIGNED_IN/OUT/USER_UPDATED）
-
-### Step 5 — 清 mock（**但不破坏 UI**）
-
-`src/api/*.ts` 目前每个文件都 `import { mock } from "./client"` 喂 `src/mocks/data.ts`。粗暴删 mock 会让所有页面白屏。本次策略：
-- **删除** `src/api/client.ts` 和 `src/mocks/data.ts`。
-- 把 `src/api/{shops,assets,accounts,publish,aigc,automation}.ts` 改成真实 Supabase 查询的骨架：
-  - 读：`supabase.from("...").select(...)` 直接返回。
-  - 列表写：暂时 `throw new Error("尚未对齐 schema，待 types.ts 同步后实现")`，让点击写按钮报清楚的错而不是白屏。
-- 等 types.ts 到位后，再做第二轮：按真实字段补全 insert / update / delete + `createServerFn` 服务端写。
-
-### Step 6 — typecheck + 启动验证
-
-- 跑 typecheck，按报错修。
-- 让您在浏览器打开 `/auth` 登录（需要您先给 anon key），看 `/_authenticated/` 路由能否进。
-
-## 暂缓项（与原方案一致）
-
-- Phase 2 总部表
-- Phase 3 Worker 回调路由 + `WORKER_SHARED_SECRET`
-- 服务端 service_role client
-- API 写操作的完整实现（等 types）
-
-## 您需要在审批本方案前/后告诉我的
-
-A. 共享库的 **anon public key**（`eyJ...` 开头那串），我用 `set_secret` 存。
-B. 共享库 `src/integrations/supabase/types.ts` 的**全文**。
-
-如果两样都还没准备好，我也可以**先执行 Step 2-5 的占位版本**（types=any、写操作抛错），先把骨架搭出来；您拿到 anon key 和 types 后我再一次性补齐。
+1. 左侧导航把「AI 创作中心」放到「素材库」上面。
+2. 解释为什么"数据库已同步"但素材库还是空的——并把 **shops / assets** 这两页真正接到共享 Supabase 数据库（最小可见范围）。
 
 ---
 
-确认后我进 build 模式动手。如果您想"两样都等齐了再开工"，我就先停在这里。
+## 为什么现在素材库还是空的（先说清楚）
+
+接通的只是 **Supabase 客户端 + 登录 + 类型定义**，业务页面的数据层 `src/api/*.ts` **仍然全是 mock**。例如 `src/api/assets.ts` 现在还是 `await mock(mockAssets)`，`src/api/shops.ts` 也是 `mock(mockShops)`——它们根本没去查数据库，所以无论共享库里有多少素材，UI 看到的永远是 `src/mocks/data.ts` 里写死的几条假数据。
+
+要看到对面项目的真实素材，必须把这两个 api 文件改成 `supabase.from('shops' / 'marketing_assets').select(...)`。这是之前规划里"Phase 5"的内容，现在你既然已经看到 anon key + types.ts 验证通过，可以开始。
+
+---
+
+## 本次改动
+
+### 1) 导航顺序（`src/components/app/AppShell.tsx`）
+
+`NAV` 数组里把 `aigc` 那行挪到 `assets` 之前。下方的 `pageTitles` 字典顺序也对应调一下（仅可读性，行为无影响）。
+
+### 2) 接通 `shops`（`src/api/shops.ts`）
+
+改写为：
+
+```ts
+const { data, error } = await supabase
+  .from("shops")
+  .select("id,name,active")
+  .order("sort_order", { ascending: true });
+```
+
+共享库 `shops` 表没有 `type` 列，统一映射成 `type: "store"`（总部表 Phase 2 再处理）。删除 `mockShops` 依赖。
+
+### 3) 接通 `assets`（`src/api/assets.ts`）
+
+改写为查询 `marketing_assets`，按需带上 `shop_id` / `kind` 过滤、并联 `shops(name)` 拿门店名：
+
+```ts
+let q = supabase
+  .from("marketing_assets")
+  .select("id,shop_id,kind,category,tags,output_url,output_text,published_at,created_at,meta,shops(name)")
+  .order("created_at", { ascending: false });
+if (filters.shopId && filters.shopId !== "all") q = q.eq("shop_id", filters.shopId);
+if (filters.kind && filters.kind !== "all") q = q.eq("kind", filters.kind);
+```
+
+字段映射（共享库 → 前端 `Asset` 类型）：
+
+| 前端字段        | 来源                                                      |
+| ----------- | ------------------------------------------------------- |
+| `id`        | `id`                                                    |
+| `shopId`    | `shop_id`                                               |
+| `shopName`  | `shops.name`（join）                                      |
+| `kind`      | `kind`                                                  |
+| `title`     | `meta.title` ?? `output_text?.slice(0,30)` ?? `"未命名素材"` |
+| `thumbnailUrl` | `output_url`（视频/图片都先用这个占位）                              |
+| `outputUrl` | `output_url`                                            |
+| `text`      | `output_text`                                           |
+| `tags`      | `tags`                                                  |
+| `category`  | `category`                                              |
+| `source`    | `meta.source` ?? `"ai"`（共享库以 AI 为主）                     |
+| `publishedAt` | `published_at`                                          |
+| `createdAt` | `created_at`                                            |
+
+`search`（标题/标签搜索）放在客户端过滤，避免 PostgREST `or` 语法在 tags 数组上不直观。
+
+`AssetFilters.source` 仍保留，但共享库目前无明确 `upload/ai` 字段，先全部按 `meta.source` 软判断；不影响列表渲染。
+
+### 4) 不动的
+
+* `src/api/{aigc,accounts,automation,publish}.ts` 本轮不改，继续 mock，避免大面积白屏。
+* mock 文件 `src/mocks/data.ts` 暂保留（`shops` 的下拉如果首次加载失败可临时降级，但本次实现里 shopsApi 不再读它，等下一轮全清）。
+* RLS / 总部表 / Realtime / Worker 回调 等都按之前结论延后。
+
+---
+
+## 验证步骤（改完后你需要做的事）
+
+1. 打开 `/auth`，用共享库里**确实有 marketing_assets 行**的账号登录。
+2. 进入「素材库」页：
+   * 如果共享库 `marketing_assets` 的 RLS 允许当前用户读到行，应能看到真实素材卡片；
+   * 如果看到「当前筛选下暂无素材」但你确认数据存在，**99% 是 RLS 把你过滤掉了**——告诉我，我下一轮在共享库那边补 policy。
+3. 顶部门店下拉应出现共享库 `shops` 表的真实门店名。
+
+---
+
+## 风险提示
+
+* `marketing_assets` 的 RLS 你之前没让我动过。如果共享库那边的 SELECT policy 限定 `auth.uid() = user_id`，那 First Steps 这边登录的用户**只能看到自己创建的素材**，不是"全部"。验证时遇到空列表别急着说前端坏了，先看是不是 RLS。
+* `shops` 表同理，如果没有 `TO authenticated USING (true)` 之类的 policy，下拉也会空。
+
+确认就开干。
