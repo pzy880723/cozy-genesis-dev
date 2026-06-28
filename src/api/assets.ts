@@ -17,6 +17,17 @@ const ALLOWED_KINDS: AssetKind[] = [
   "product",
 ];
 
+// DB 里 kind 是 photo/video/copy（共享库的命名），前端用 image/video/copy/...，做一次映射。
+function uiKindToDb(k: AssetKind): string {
+  if (k === "image") return "photo";
+  return k;
+}
+function dbKindToUi(k: string): AssetKind {
+  if (k === "photo") return "image";
+  if (ALLOWED_KINDS.includes(k as AssetKind)) return k as AssetKind;
+  return "image";
+}
+
 export const assetsApi = {
   list: async (filters: AssetFilters = {}): Promise<Asset[]> => {
     let q = supabase
@@ -29,16 +40,14 @@ export const assetsApi = {
       q = q.eq("shop_id", filters.shopId);
     }
     if (filters.kind && filters.kind !== "all") {
-      q = q.eq("kind", filters.kind);
+      q = q.eq("kind", uiKindToDb(filters.kind));
     }
     const { data, error } = await q;
     if (error) throw error;
 
     let out: Asset[] = (data ?? []).map((r: any) => {
       const meta = (r.meta ?? {}) as Record<string, any>;
-      const kind: AssetKind = ALLOWED_KINDS.includes(r.kind)
-        ? (r.kind as AssetKind)
-        : "image";
+      const kind: AssetKind = dbKindToUi(r.kind);
       const source: "upload" | "ai" =
         meta.source === "upload" ? "upload" : "ai";
       const title: string =
