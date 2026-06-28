@@ -9,10 +9,16 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as PublishRouteImport } from './routes/publish'
 import { Route as AssetsRouteImport } from './routes/assets'
 import { Route as AigcRouteImport } from './routes/aigc'
 import { Route as IndexRouteImport } from './routes/index'
 
+const PublishRoute = PublishRouteImport.update({
+  id: '/publish',
+  path: '/publish',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AssetsRoute = AssetsRouteImport.update({
   id: '/assets',
   path: '/assets',
@@ -33,34 +39,45 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/aigc': typeof AigcRoute
   '/assets': typeof AssetsRoute
+  '/publish': typeof PublishRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/aigc': typeof AigcRoute
   '/assets': typeof AssetsRoute
+  '/publish': typeof PublishRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/aigc': typeof AigcRoute
   '/assets': typeof AssetsRoute
+  '/publish': typeof PublishRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/aigc' | '/assets'
+  fullPaths: '/' | '/aigc' | '/assets' | '/publish'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/aigc' | '/assets'
-  id: '__root__' | '/' | '/aigc' | '/assets'
+  to: '/' | '/aigc' | '/assets' | '/publish'
+  id: '__root__' | '/' | '/aigc' | '/assets' | '/publish'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AigcRoute: typeof AigcRoute
   AssetsRoute: typeof AssetsRoute
+  PublishRoute: typeof PublishRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/publish': {
+      id: '/publish'
+      path: '/publish'
+      fullPath: '/publish'
+      preLoaderRoute: typeof PublishRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/assets': {
       id: '/assets'
       path: '/assets'
@@ -89,6 +106,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AigcRoute: AigcRoute,
   AssetsRoute: AssetsRoute,
+  PublishRoute: PublishRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
