@@ -154,13 +154,29 @@ function AssetsPage() {
             <div className="grid grid-cols-4 gap-3 p-4">
               {(assets.data ?? []).map((a) => (
                 <div key={a.id} className="overflow-hidden rounded-md border border-border bg-white">
-                  <div className="flex h-28 items-center justify-center bg-gradient-to-br from-secondary to-primary-soft">
-                    {a.kind === "image" && <ImageIcon className="h-7 w-7 text-graphite/60" />}
-                    {a.kind === "video" && <Video className="h-7 w-7 text-graphite/60" />}
-                    {a.kind === "copy" && <FileText className="h-7 w-7 text-graphite/60" />}
-                    {a.kind === "storyboard" && <Film className="h-7 w-7 text-graphite/60" />}
-                    {a.kind === "character" && <Users className="h-7 w-7 text-graphite/60" />}
-                    {a.kind === "product" && <Package className="h-7 w-7 text-graphite/60" />}
+                  <div className="relative flex h-28 items-center justify-center overflow-hidden bg-gradient-to-br from-secondary to-primary-soft">
+                    {a.thumbnailUrl && (a.kind === "image" || a.kind === "storyboard" || a.kind === "character" || a.kind === "product") ? (
+                      <img
+                        src={a.thumbnailUrl}
+                        alt={a.title}
+                        loading="lazy"
+                        className="h-full w-full object-cover"
+                        onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+                      />
+                    ) : a.kind === "video" && a.outputUrl ? (
+                      <video src={a.outputUrl} className="h-full w-full object-cover" muted preload="metadata" />
+                    ) : a.kind === "copy" && a.text ? (
+                      <div className="line-clamp-4 p-2 text-[11px] leading-snug text-graphite/80">{a.text}</div>
+                    ) : (
+                      <>
+                        {a.kind === "image" && <ImageIcon className="h-7 w-7 text-graphite/60" />}
+                        {a.kind === "video" && <Video className="h-7 w-7 text-graphite/60" />}
+                        {a.kind === "copy" && <FileText className="h-7 w-7 text-graphite/60" />}
+                        {a.kind === "storyboard" && <Film className="h-7 w-7 text-graphite/60" />}
+                        {a.kind === "character" && <Users className="h-7 w-7 text-graphite/60" />}
+                        {a.kind === "product" && <Package className="h-7 w-7 text-graphite/60" />}
+                      </>
+                    )}
                   </div>
                   <div className="p-2.5">
                     <div className="line-clamp-1 text-[13px] font-bold">{a.title}</div>
