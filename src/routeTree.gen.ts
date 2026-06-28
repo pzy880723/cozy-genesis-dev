@@ -9,12 +9,19 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as PublishRouteImport } from './routes/publish'
 import { Route as AutomationRouteImport } from './routes/automation'
 import { Route as AssetsRouteImport } from './routes/assets'
 import { Route as AigcRouteImport } from './routes/aigc'
+import { Route as AccountsRouteImport } from './routes/accounts'
 import { Route as IndexRouteImport } from './routes/index'
 
+const SettingsRoute = SettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PublishRoute = PublishRouteImport.update({
   id: '/publish',
   path: '/publish',
@@ -35,6 +42,11 @@ const AigcRoute = AigcRouteImport.update({
   path: '/aigc',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AccountsRoute = AccountsRouteImport.update({
+  id: '/accounts',
+  path: '/accounts',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -43,44 +55,81 @@ const IndexRoute = IndexRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/accounts': typeof AccountsRoute
   '/aigc': typeof AigcRoute
   '/assets': typeof AssetsRoute
   '/automation': typeof AutomationRoute
   '/publish': typeof PublishRoute
+  '/settings': typeof SettingsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/accounts': typeof AccountsRoute
   '/aigc': typeof AigcRoute
   '/assets': typeof AssetsRoute
   '/automation': typeof AutomationRoute
   '/publish': typeof PublishRoute
+  '/settings': typeof SettingsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/accounts': typeof AccountsRoute
   '/aigc': typeof AigcRoute
   '/assets': typeof AssetsRoute
   '/automation': typeof AutomationRoute
   '/publish': typeof PublishRoute
+  '/settings': typeof SettingsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/aigc' | '/assets' | '/automation' | '/publish'
+  fullPaths:
+    | '/'
+    | '/accounts'
+    | '/aigc'
+    | '/assets'
+    | '/automation'
+    | '/publish'
+    | '/settings'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/aigc' | '/assets' | '/automation' | '/publish'
-  id: '__root__' | '/' | '/aigc' | '/assets' | '/automation' | '/publish'
+  to:
+    | '/'
+    | '/accounts'
+    | '/aigc'
+    | '/assets'
+    | '/automation'
+    | '/publish'
+    | '/settings'
+  id:
+    | '__root__'
+    | '/'
+    | '/accounts'
+    | '/aigc'
+    | '/assets'
+    | '/automation'
+    | '/publish'
+    | '/settings'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AccountsRoute: typeof AccountsRoute
   AigcRoute: typeof AigcRoute
   AssetsRoute: typeof AssetsRoute
   AutomationRoute: typeof AutomationRoute
   PublishRoute: typeof PublishRoute
+  SettingsRoute: typeof SettingsRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/settings': {
+      id: '/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/publish': {
       id: '/publish'
       path: '/publish'
@@ -109,6 +158,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AigcRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/accounts': {
+      id: '/accounts'
+      path: '/accounts'
+      fullPath: '/accounts'
+      preLoaderRoute: typeof AccountsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -121,10 +177,12 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AccountsRoute: AccountsRoute,
   AigcRoute: AigcRoute,
   AssetsRoute: AssetsRoute,
   AutomationRoute: AutomationRoute,
   PublishRoute: PublishRoute,
+  SettingsRoute: SettingsRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
