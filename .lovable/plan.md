@@ -1,100 +1,77 @@
-# PC 端（First Steps）接入本项目 Lovable Cloud 数据库 — 接入手册
+# 把本项目（First Steps）接入共享 Supabase 库 `narqwgwpqglathwtyevz`
 
-## 目标
+我搞反了方向。这个项目就是 First Steps，上一轮粘进来的手册是让**我在这里照着落地**的，不是让我去写给别人看。重新规划，直接动手。
 
-只在**本项目**新建一份手册 `docs/cross-project-shared-db.md`，您把它粘贴到 First Steps 那边的 Lovable 对话，对方 Agent 零思考即可落地。**本次不动任何运行代码，不动数据库。**
+## 边界确认
 
-按您的选择：
-- **浏览器端 client 唯一**（不下发 service_role）
-- **Phase 2 总部表先不动**
-- **types.ts 手动复制**
+- **不**调用 `supabase--enable`（避免开新的独立库）。
+- **不**下发 service_role，所有写操作走 RLS + 用户 JWT。
+- types.ts 手动同步，本次首版需要您从共享库复制全文给我。
 
-## 手册大纲（`docs/cross-project-shared-db.md`）
+## 我现在不能独立完成的两件事，需要您配合
 
-### 0. 前置警告
+1. **anon / publishable key**：必须从共享库 Supabase Dashboard → Project Settings → API 复制 `anon public` key 给我，我用 `set_secret` 写入 `VITE_SUPABASE_PUBLISHABLE_KEY` + `SUPABASE_PUBLISHABLE_KEY`（VITE_ 前缀的也得走 secret 接口才能被前端读到）。
+2. **types.ts 首版**：从共享库 `src/integrations/supabase/types.ts` 整段粘给我，我覆盖落地。
 
-- First Steps 绝对不要点 "Enable Lovable Cloud"，否则会被开一个新的独立库。
-- 如果已经误开，先停下来联系 Lovable 支持回滚，再继续。
-- 本次只用「普通 Supabase 客户端 + URL + anon key」连本项目。
+> 在拿到这两样之前，我先把不依赖它们的部分全部落地（client / 中间件 / 路由壳 / mock 清理）。types 未到位时 `Database` 类型用 `any` 占位临时编译过，等您贴 types 再一次替换。
 
-### 1. 连接参数（可直接贴）
+## 执行步骤（一次性把能做的全做了）
 
-```env
-VITE_SUPABASE_URL=https://narqwgwpqglathwtyevz.supabase.co
-VITE_SUPABASE_PUBLISHABLE_KEY=<本项目 anon/publishable key>
-VITE_SUPABASE_PROJECT_ID=narqwgwpqglathwtyevz
-```
+### Step 1 — 写环境变量（占位 anon key，等您给）
 
-anon key 我会用 `secrets--fetch_secrets` + 读本项目环境拿到真实值贴进文档。所有写权限由 RLS + Edge Function 控制，不下发 service_role。
+- `set_secret` 写入：
+  - `VITE_SUPABASE_URL=https://narqwgwpqglathwtyevz.supabase.co`
+  - `SUPABASE_URL=https://narqwgwpqglathwtyevz.supabase.co`
+  - `VITE_SUPABASE_PROJECT_ID=narqwgwpqglathwtyevz`
+  - `SUPABASE_PROJECT_ID=narqwgwpqglathwtyevz`
+- `VITE_SUPABASE_PUBLISHABLE_KEY` / `SUPABASE_PUBLISHABLE_KEY`：**等您给值后再 set**。
 
-### 2. 要在 First Steps 创建的文件（完整代码）
+### Step 2 — 新建 Supabase 集成文件
 
-- `src/integrations/supabase/client.ts` — 浏览器端 client，`persistSession: true` + `autoRefreshToken: true`，localStorage key 自动复用 `sb-narqwgwpqglathwtyevz-auth-token`。
-- `src/integrations/supabase/types.ts` — 从本项目原样复制（手册附「同步指令」）。
-- `src/integrations/supabase/auth-attacher.ts` — TanStack functionMiddleware，给 createServerFn 调用挂 bearer。
-- `src/integrations/supabase/auth-middleware.ts` — `requireSupabaseAuth`，用 anon key + 用户 bearer，**不引入 service_role**；服务端写也走用户身份，RLS 生效。
-- `src/start.ts` 补丁 — 把 `attachSupabaseAuth` append 到 `functionMiddleware`。
-- `src/routes/_authenticated/route.tsx` — 受保护布局（`ssr: false` + `supabase.auth.getUser()` 守门）。
-- `src/routes/auth.tsx` — 公共登录页（邮箱 + Google，Google 走 `lovable.auth.signInWithOAuth`）。
-- `src/routes/__root.tsx` 补丁 — 注册 `onAuthStateChange` 仅监听身份切换事件。
+- `src/integrations/supabase/client.ts`（浏览器端，默认 storageKey）
+- `src/integrations/supabase/types.ts`（**先放最小占位** `export type Database = any;`，等您贴真的覆盖）
+- `src/integrations/supabase/auth-attacher.ts`（client functionMiddleware，挂 bearer）
+- `src/integrations/supabase/auth-middleware.ts`（`requireSupabaseAuth`，anon key + 用户 bearer，**不用 service_role**）
 
-### 3. 使用示例（贴即用）
+### Step 3 — 改 `src/start.ts`
 
-- 读 `marketing_assets`：`queryOptions` + `useSuspenseQuery`，loader 用 `ensureQueryData`。
-- 写操作：`createServerFn` + `requireSupabaseAuth` + `context.supabase.from('marketing_assets').insert({ shop_id, ... })`。
-- 调 Edge Function：`createServerFn` 内 `context.supabase.functions.invoke('render-marketing-video', { body })`。
-- Realtime：浏览器端 `supabase.channel('marketing_video_jobs').on('postgres_changes', ...)`。
-- Storage 签名 URL：`createServerFn` 内 `context.supabase.storage.from('marketing-assets').createSignedUrl(path, 3600)`。
+把 `attachSupabaseAuth` append 到 `functionMiddleware`，保留原 `errorMiddleware`。
 
-### 4. RLS 与多门店约束
+### Step 4 — 路由壳：登录 + 受保护布局
 
-- 所有面向门店的 insert 必须带 `shop_id`，给一个 `useShops()` hook 示例（查 `shops` + 当前用户可见门店）。
-- 总部管理员：`public.has_role(auth.uid(), 'admin')`，前端用一个 `useIsAdmin()` hook。
-- 列出常踩坑：insert 没带 `shop_id` → RLS 403；查询要带 `.eq('shop_id', ...)` 才能命中索引。
+- 新建 `src/routes/auth.tsx`（公共登录页：邮箱密码 + Google via lovable broker）
+- 新建 `src/routes/_authenticated/route.tsx`（`ssr: false` + `supabase.auth.getUser()` 守门）
+- 把现有业务路由从 `src/routes/` 移到 `src/routes/_authenticated/`：`index.tsx` / `assets.tsx` / `aigc.tsx` / `publish.tsx` / `accounts.tsx` / `automation.tsx` / `settings.tsx`
+- 在 `__root.tsx` 的 RootComponent 里加 `onAuthStateChange` 监听（仅 SIGNED_IN/OUT/USER_UPDATED）
 
-### 5. 登录态共享
+### Step 5 — 清 mock（**但不破坏 UI**）
 
-- 同 Supabase URL ⇒ localStorage key 一致，**同域**自动共享；跨域名要重新登录，但 `auth.users.id` 同一份，数据共享无碍。
-- 不要在 First Steps 改 storageKey，保持默认。
+`src/api/*.ts` 目前每个文件都 `import { mock } from "./client"` 喂 `src/mocks/data.ts`。粗暴删 mock 会让所有页面白屏。本次策略：
+- **删除** `src/api/client.ts` 和 `src/mocks/data.ts`。
+- 把 `src/api/{shops,assets,accounts,publish,aigc,automation}.ts` 改成真实 Supabase 查询的骨架：
+  - 读：`supabase.from("...").select(...)` 直接返回。
+  - 列表写：暂时 `throw new Error("尚未对齐 schema，待 types.ts 同步后实现")`，让点击写按钮报清楚的错而不是白屏。
+- 等 types.ts 到位后，再做第二轮：按真实字段补全 insert / update / delete + `createServerFn` 服务端写。
 
-### 6. Mock 清理清单
+### Step 6 — typecheck + 启动验证
 
-明确列出 First Steps 这些文件要怎么处理：
-- 删：`src/api/client.ts`（mock 层）、`src/mocks/data.ts`、整个 `src/mocks/`。
-- 改写为真实查询：`src/api/{assets,accounts,publish,aigc,automation,shops}.ts`。
-- 路由文件 `_authenticated/` 化：把 `src/routes/{index,assets,aigc,publish,accounts,automation,settings}.tsx` 移到 `src/routes/_authenticated/` 下。
-- `src/types/index.ts` 保留，但用 `Database['public']['Tables']['...']['Row']` 重新对齐。
+- 跑 typecheck，按报错修。
+- 让您在浏览器打开 `/auth` 登录（需要您先给 anon key），看 `/_authenticated/` 路由能否进。
 
-### 7. types.ts 手动同步流程
+## 暂缓项（与原方案一致）
 
-- 每次本项目跑 migration 后：本项目里读 `src/integrations/supabase/types.ts` → 完整覆盖 First Steps 同名文件 → 重新 typecheck。
-- 手册给一条"提示语模板"，您可以直接把新 types.ts 内容连同这段提示丢给 First Steps Agent。
+- Phase 2 总部表
+- Phase 3 Worker 回调路由 + `WORKER_SHARED_SECRET`
+- 服务端 service_role client
+- API 写操作的完整实现（等 types）
 
-### 8. 落地步骤（给 First Steps Agent 的执行清单）
+## 您需要在审批本方案前/后告诉我的
 
-1. 确认未启用 Lovable Cloud。
-2. 用 Lovable 工具写 `.env`（VITE_* 三个）。
-3. 创建第 2 节里的 6 个文件 + 2 个补丁。
-4. 删 mock、改写 6 个 api 文件。
-5. 把业务路由移入 `_authenticated/`。
-6. 跑 typecheck，按报错对齐 `Database` 类型。
-7. 启用 Google OAuth：调 `supabase--configure_social_auth`（在 First Steps 项目内）。
+A. 共享库的 **anon public key**（`eyJ...` 开头那串），我用 `set_secret` 存。
+B. 共享库 `src/integrations/supabase/types.ts` 的**全文**。
 
-### 9. 暂缓项（本次不做，留接口）
+如果两样都还没准备好，我也可以**先执行 Step 2-5 的占位版本**（types=any、写操作抛错），先把骨架搭出来；您拿到 anon key 和 types 后我再一次性补齐。
 
-- Phase 2 总部表（`headquarters_publish_batches` / `automation_tasks` / `hq_dashboard_metrics_v`）：等接通验证后再回本项目出 migration。
-- Phase 3 Worker 回调路由 + `WORKER_SHARED_SECRET`：等 Codex 反馈契约后再生成。
-- 服务端 service_role client：本次不开放。
+---
 
-## 技术细节
-
-- 文档语言：中文，配可直接复制的代码块。
-- 代码风格对齐 TanStack Start 模板：`createServerFn` + `useServerFn` + `useSuspenseQuery + queryOptions`；公共路由禁止调受保护 server fn。
-- `auth-middleware.ts` 用 anon key 构造服务端 client，再 `setSession({ access_token, refresh_token })`，RLS 以用户身份生效；不引入 `client.server.ts`。
-- 不在文档里写 service_role 值；anon key 是公开 key，写在文档里合规。
-
-## 本次只动这一个文件
-
-`docs/cross-project-shared-db.md`（新建）。其它一律不动。
-
-确认后我进入 build 模式开始写。
+确认后我进 build 模式动手。如果您想"两样都等齐了再开工"，我就先停在这里。
