@@ -1,12 +1,19 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { AppShell } from "@/components/app/AppShell";
 import { PageHeader, Panel, EmptyState } from "@/components/app/PageHeader";
 import { StatusBadge } from "@/components/app/StatusBadge";
 import { assetsApi, type AssetFilters } from "@/api/assets";
 import { shopsApi } from "@/api/shops";
-import type { AssetKind } from "@/types";
+import type { Asset, AssetKind } from "@/types";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { toast } from "sonner";
 import {
   Image as ImageIcon,
   Video,
@@ -19,6 +26,9 @@ import {
   Search,
   Upload,
   Tag,
+  Maximize2,
+  Send,
+  Play,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -40,6 +50,10 @@ const KINDS: { key: AssetKind | "all"; label: string; icon: React.ComponentType<
 function AssetsPage() {
   const [filters, setFilters] = useState<AssetFilters>({ kind: "all", shopId: "all", source: "all" });
   const [view, setView] = useState<"grid" | "list">("grid");
+  const [preview, setPreview] = useState<Asset | null>(null);
+  const [tagPanelOpen, setTagPanelOpen] = useState(false);
+  const [tagSearch, setTagSearch] = useState("");
+  const [visibleCount, setVisibleCount] = useState(120);
 
   const shops = useQuery({ queryKey: ["shops"], queryFn: () => shopsApi.list() });
   const assets = useQuery({
@@ -50,6 +64,20 @@ function AssetsPage() {
   const counts: Record<string, number> = {};
   (assets.data ?? []).forEach((a) => (counts[a.kind] = (counts[a.kind] ?? 0) + 1));
 
+  const tagStats = useMemo(() => {
+    const map = new Map<string, number>();
+    (assets.data ?? []).forEach((a) =>
+      a.tags.forEach((t) => map.set(t, (map.get(t) ?? 0) + 1)),
+    );
+    return [...map.entries()].sort((a, b) => b[1] - a[1]);
+  }, [assets.data]);
+
+  const visible = (assets.data ?? []).slice(0, visibleCount);
+
+  const handlePublish = (a: Asset) => {
+    toast.success(`已加入发布队列：${a.title}`);
+  };
+
   return (
     <AppShell>
       <PageHeader
@@ -57,8 +85,11 @@ function AssetsPage() {
         description="总部与门店的图片、视频、文案、分镜、角色、产品资产中心。"
         actions={
           <>
-            <button className="inline-flex h-9 items-center gap-1.5 rounded-md border border-border bg-white px-3.5 text-sm font-bold hover:bg-secondary">
-              <Tag className="h-4 w-4" /> 批量打标
+            <button
+              onClick={() => setTagPanelOpen(true)}
+              className="inline-flex h-9 items-center gap-1.5 rounded-md border border-border bg-white px-3.5 text-sm font-bold hover:bg-secondary"
+            >
+              <Tag className="h-4 w-4" /> 标签管理
             </button>
             <button className="inline-flex h-9 items-center gap-1.5 rounded-md bg-primary px-3.5 text-sm font-bold text-primary-foreground hover:opacity-95">
               <Upload className="h-4 w-4" /> 上传素材
@@ -119,7 +150,10 @@ function AssetsPage() {
               return (
                 <button
                   key={k.key}
-                  onClick={() => setFilters((f) => ({ ...f, kind: k.key }))}
+                  onClick={() => {
+                    setFilters((f) => ({ ...f, kind: k.key }));
+                    setVisibleCount(120);
+                  }}
                   className={cn(
                     "flex w-full items-center justify-between rounded-md px-3 py-2 text-sm font-semibold",
                     active ? "bg-primary-soft text-primary" : "text-graphite hover:bg-secondary",
@@ -140,9 +174,9 @@ function AssetsPage() {
 
         <Panel title="素材" hint={`共 ${assets.data?.length ?? 0} 个`}>
           {assets.isLoading ? (
-            <div className="grid grid-cols-4 gap-3 p-4">
+            <div className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
               {Array.from({ length: 8 }).map((_, i) => (
-                <div key={i} className="h-40 animate-pulse rounded-md bg-secondary" />
+                <div key={i} className="aspect-square animate-pulse rounded-md bg-secondary" />
               ))}
             </div>
           ) : (assets.data ?? []).length === 0 ? (
@@ -151,51 +185,108 @@ function AssetsPage() {
               description="请调整门店、类型或时间范围。"
             />
           ) : view === "grid" ? (
-            <div className="grid grid-cols-4 gap-3 p-4">
-              {(assets.data ?? []).map((a) => (
-                <div key={a.id} className="overflow-hidden rounded-md border border-border bg-white">
-                  <div className="relative flex h-28 items-center justify-center overflow-hidden bg-gradient-to-br from-secondary to-primary-soft">
-                    {a.thumbnailUrl && (a.kind === "image" || a.kind === "storyboard" || a.kind === "character" || a.kind === "product") ? (
-                      <img
-                        src={a.thumbnailUrl}
-                        alt={a.title}
-                        loading="lazy"
-                        className="h-full w-full object-cover"
-                        onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
-                      />
-                    ) : a.kind === "video" && a.outputUrl ? (
-                      <video src={a.outputUrl} className="h-full w-full object-cover" muted preload="metadata" />
-                    ) : a.kind === "copy" && a.text ? (
-                      <div className="line-clamp-4 p-2 text-[11px] leading-snug text-graphite/80">{a.text}</div>
-                    ) : (
-                      <>
-                        {a.kind === "image" && <ImageIcon className="h-7 w-7 text-graphite/60" />}
-                        {a.kind === "video" && <Video className="h-7 w-7 text-graphite/60" />}
-                        {a.kind === "copy" && <FileText className="h-7 w-7 text-graphite/60" />}
-                        {a.kind === "storyboard" && <Film className="h-7 w-7 text-graphite/60" />}
-                        {a.kind === "character" && <Users className="h-7 w-7 text-graphite/60" />}
-                        {a.kind === "product" && <Package className="h-7 w-7 text-graphite/60" />}
-                      </>
-                    )}
-                  </div>
-                  <div className="p-2.5">
-                    <div className="line-clamp-1 text-[13px] font-bold">{a.title}</div>
-                    <div className="mt-1 flex items-center justify-between text-[11px] text-muted-foreground">
-                      <span>{a.shopName}</span>
-                      {a.source === "ai" ? (
-                        <StatusBadge tone="info" className="h-5 px-1.5 text-[10px]">AI</StatusBadge>
-                      ) : (
-                        <span>上传</span>
-                      )}
+            <>
+              <div className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+                {visible.map((a) => {
+                  const publishable = a.kind === "image" || a.kind === "video";
+                  return (
+                    <div
+                      key={a.id}
+                      className="group overflow-hidden rounded-md border border-border bg-white"
+                    >
+                      <button
+                        onClick={() => setPreview(a)}
+                        className="relative block aspect-square w-full overflow-hidden bg-gradient-to-br from-secondary to-primary-soft"
+                        aria-label={`预览 ${a.title}`}
+                      >
+                        {a.thumbnailUrl &&
+                        (a.kind === "image" ||
+                          a.kind === "video" ||
+                          a.kind === "storyboard" ||
+                          a.kind === "character" ||
+                          a.kind === "product") ? (
+                          <img
+                            src={a.thumbnailUrl}
+                            alt={a.title}
+                            loading="lazy"
+                            decoding="async"
+                            className="h-full w-full object-cover"
+                            onError={(e) => {
+                              (e.currentTarget as HTMLImageElement).style.visibility = "hidden";
+                            }}
+                          />
+                        ) : a.kind === "copy" && a.text ? (
+                          <div className="line-clamp-6 p-3 text-left text-[12px] leading-snug text-graphite/80">
+                            {a.text}
+                          </div>
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center">
+                            {a.kind === "image" && <ImageIcon className="h-8 w-8 text-graphite/60" />}
+                            {a.kind === "video" && <Video className="h-8 w-8 text-graphite/60" />}
+                            {a.kind === "copy" && <FileText className="h-8 w-8 text-graphite/60" />}
+                            {a.kind === "storyboard" && <Film className="h-8 w-8 text-graphite/60" />}
+                            {a.kind === "character" && <Users className="h-8 w-8 text-graphite/60" />}
+                            {a.kind === "product" && <Package className="h-8 w-8 text-graphite/60" />}
+                          </div>
+                        )}
+                        {a.kind === "video" && (
+                          <div className="pointer-events-none absolute left-1.5 top-1.5 flex items-center gap-1 rounded bg-black/55 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                            <Play className="h-3 w-3" /> 视频
+                          </div>
+                        )}
+                        {/* 放大入口 */}
+                        <span className="pointer-events-none absolute right-1.5 top-1.5 flex h-7 w-7 items-center justify-center rounded-full bg-black/55 text-white opacity-0 transition group-hover:opacity-100">
+                          <Maximize2 className="h-3.5 w-3.5" />
+                        </span>
+                        {/* 发布入口（仅图片/视频） */}
+                        {publishable && (
+                          <span
+                            role="button"
+                            tabIndex={0}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handlePublish(a);
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                handlePublish(a);
+                              }
+                            }}
+                            className="absolute bottom-1.5 right-1.5 flex h-7 w-7 cursor-pointer items-center justify-center rounded-full bg-primary text-primary-foreground opacity-0 shadow transition hover:opacity-100 group-hover:opacity-100"
+                            aria-label="发布"
+                          >
+                            <Send className="h-3.5 w-3.5" />
+                          </span>
+                        )}
+                      </button>
+                      <div className="px-2.5 py-2">
+                        <div className="line-clamp-1 text-[12px] font-bold">{a.title}</div>
+                        <div className="mt-0.5 flex items-center justify-between text-[10px] text-muted-foreground">
+                          <span className="line-clamp-1">{a.shopName ?? "—"}</span>
+                          {a.source === "ai" ? (
+                            <StatusBadge tone="info" className="h-4 px-1 text-[9px]">AI</StatusBadge>
+                          ) : (
+                            <span>上传</span>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                    <div className="mt-2 flex gap-1">
-                      <button className="flex-1 rounded border border-border bg-white px-2 py-1 text-[11px] font-bold hover:bg-secondary">预览</button>
-                      <button className="flex-1 rounded bg-primary px-2 py-1 text-[11px] font-bold text-primary-foreground hover:opacity-95">发布</button>
-                    </div>
-                  </div>
+                  );
+                })}
+              </div>
+              {(assets.data?.length ?? 0) > visibleCount && (
+                <div className="flex justify-center p-4">
+                  <button
+                    onClick={() => setVisibleCount((n) => n + 120)}
+                    className="inline-flex h-9 items-center rounded-md border border-border bg-white px-4 text-sm font-bold hover:bg-secondary"
+                  >
+                    加载更多（剩 {(assets.data?.length ?? 0) - visibleCount}）
+                  </button>
                 </div>
-              ))}
-            </div>
+              )}
+            </>
           ) : (
             <table className="w-full border-collapse text-sm">
               <thead>
@@ -224,6 +315,88 @@ function AssetsPage() {
           )}
         </Panel>
       </div>
+
+      {/* 预览弹窗 */}
+      <Dialog open={!!preview} onOpenChange={(o) => !o && setPreview(null)}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle className="line-clamp-1">{preview?.title}</DialogTitle>
+          </DialogHeader>
+          {preview && (
+            <div className="space-y-3">
+              <div className="flex max-h-[70vh] items-center justify-center overflow-hidden rounded-md bg-black/5">
+                {preview.kind === "video" && preview.outputUrl ? (
+                  <video src={preview.outputUrl} controls autoPlay className="max-h-[70vh] w-full" />
+                ) : preview.kind === "copy" && preview.text ? (
+                  <pre className="max-h-[70vh] w-full overflow-auto whitespace-pre-wrap p-4 text-sm">{preview.text}</pre>
+                ) : preview.outputUrl ? (
+                  <img src={preview.outputUrl} alt={preview.title} className="max-h-[70vh] w-auto object-contain" />
+                ) : (
+                  <div className="p-8 text-sm text-muted-foreground">无可预览内容</div>
+                )}
+              </div>
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span>{preview.shopName ?? "—"} · {preview.createdAt}</span>
+                {(preview.kind === "image" || preview.kind === "video") && (
+                  <button
+                    onClick={() => { handlePublish(preview); setPreview(null); }}
+                    className="inline-flex h-8 items-center gap-1.5 rounded-md bg-primary px-3 text-xs font-bold text-primary-foreground hover:opacity-95"
+                  >
+                    <Send className="h-3.5 w-3.5" /> 发布
+                  </button>
+                )}
+              </div>
+              {preview.tags.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {preview.tags.map((t) => (
+                    <span key={t} className="rounded bg-secondary px-2 py-0.5 text-[11px] text-graphite">#{t}</span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* 标签管理弹窗 */}
+      <Dialog open={tagPanelOpen} onOpenChange={setTagPanelOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>标签管理</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <input
+              placeholder="搜索标签"
+              value={tagSearch}
+              onChange={(e) => setTagSearch(e.target.value)}
+              className="h-9 w-full rounded-md border border-border bg-white px-3 text-sm outline-none"
+            />
+            <div className="max-h-[60vh] space-y-1 overflow-auto">
+              {tagStats.length === 0 && (
+                <div className="py-8 text-center text-sm text-muted-foreground">当前结果集没有标签</div>
+              )}
+              {tagStats
+                .filter(([t]) => !tagSearch || t.toLowerCase().includes(tagSearch.toLowerCase()))
+                .map(([t, n]) => (
+                  <button
+                    key={t}
+                    onClick={() => {
+                      setFilters((f) => ({ ...f, search: t }));
+                      setTagPanelOpen(false);
+                    }}
+                    className="flex w-full items-center justify-between rounded-md border border-border bg-white px-3 py-2 text-left text-sm hover:bg-secondary"
+                  >
+                    <span className="font-semibold">#{t}</span>
+                    <span className="text-xs tabular-nums text-muted-foreground">{n}</span>
+                  </button>
+                ))}
+            </div>
+            <div className="rounded-md border border-dashed border-border bg-[#fafafa] p-3 text-[11px] text-muted-foreground">
+              重命名 / 合并 / 删除 标签需要写库权限，将在 Phase 2 开放。
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </AppShell>
   );
 }
