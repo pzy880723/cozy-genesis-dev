@@ -1,5 +1,5 @@
 import { createMiddleware } from "@tanstack/react-start";
-import { getHeaders } from "@tanstack/react-start/server";
+import { getRequestHeader } from "@tanstack/react-start/server";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "./types";
 import {
@@ -11,9 +11,7 @@ import {
 // 不引入 service_role。
 export const requireSupabaseAuth = createMiddleware({ type: "function" }).server(
   async ({ next }) => {
-    const headers = getHeaders();
-    const h = headers as Record<string, string | undefined>;
-    const rawAuth = h["authorization"] ?? h["Authorization"];
+    const rawAuth = getRequestHeader("authorization");
     if (!rawAuth || !rawAuth.startsWith("Bearer ")) {
       throw new Response("Unauthorized: No authorization header provided", {
         status: 401,
