@@ -1,10 +1,11 @@
-import type { Asset, AssetKind } from "@/types";
+import type { Asset, AssetKind, AssetOrigin } from "@/types";
 import { supabase } from "@/integrations/shared-db/client";
 
 export type AssetFilters = {
   shopId?: string | "all";
   kind?: AssetKind | "all";
   source?: "upload" | "ai" | "all";
+  origin?: AssetOrigin | "all";
   search?: string;
   limit?: number;
   offset?: number;
@@ -76,11 +77,15 @@ async function printDiagnosticsOnce() {
 export const assetsApi = {
   list: async (filters: AssetFilters = {}): Promise<Asset[]> => {
     void printDiagnosticsOnce();
+    // 注意：origin 字段为后加的列，存量数据库可能尚未有此列。
+    // 这里先尝试带 origin 查询，失败则降级为不带 origin 的查询，并把所有行当成 mobile。
+    const baseSelect =
+      "id,shop_id,kind,category,tags,output_url,output_text,published_at,created_at,meta,shops(name)";
+    const selectWithOrigin = `${baseSelect},origin`;
+    let useOrigin = true;
     let q = supabase
       .from("marketing_assets")
-      .select(
-        "id,shop_id,kind,category,tags,output_url,output_text,published_at,created_at,meta,shops(name)",
-      )
+      .select(selectWithOrigin)
       .order("created_at", { ascending: false });
     if (filters.shopId && filters.shopId !== "all") {
       q = q.eq("shop_id", filters.shopId);
@@ -94,11 +99,38 @@ export const assetsApi = {
         q = q.eq("kind", uiKindToDb(k));
       }
     }
+    if (filters.origin && filters.origin !== "all") {
+      q = q.eq("origin", filters.origin);
+    }
     const limit = filters.limit ?? 120;
     const offset = filters.offset ?? 0;
     q = q.range(offset, offset + limit - 1);
-    const { data, error } = await q;
-    if (error) throw error;
+    let { data, error } = await q;
+    if (error) {
+      // origin 列不存在时降级
+      const msg = String(error.message ?? "");
+      if (msg.includes("origin")) {
+        useOrigin = false;
+        let q2 = supabase
+          .from("marketing_assets")
+          .select(baseSelect)
+          .order("created_at", { ascending: false });
+        if (filters.shopId && filters.shopId !== "all") q2 = q2.eq("shop_id", filters.shopId);
+        if (filters.kind && filters.kind !== "all") {
+          const k = filters.kind;
+          if (k === "storyboard" || k === "character" || k === "product") q2 = q2.eq("category", k);
+          else q2 = q2.eq("kind", uiKindToDb(k));
+        }
+        q2 = q2.range(offset, offset + limit - 1);
+        const r2 = await q2;
+        if (r2.error) throw r2.error;
+        data = r2.data as any;
+        // 当 origin 列还没建好时，如果用户筛了 pc，就直接返回空（避免误把存量当 pc）
+        if (filters.origin === "pc") return [];
+      } else {
+        throw error;
+      }
+    }
 
     let out: Asset[] = (data ?? []).map((r: any) => {
       const meta = (r.meta ?? {}) as Record<string, any>;
@@ -110,6 +142,9 @@ export const assetsApi = {
       const kind: AssetKind = catAsKind ?? dbKindToUi(r.kind);
       const source: "upload" | "ai" =
         meta.source === "upload" ? "upload" : "ai";
+      const origin: AssetOrigin = useOrigin
+        ? (r.origin === "pc" ? "pc" : "mobile")
+        : "mobile";
       const title: string =
         meta.title ??
         (r.output_text ? String(r.output_text).slice(0, 30) : "未命名素材");
@@ -130,6 +165,7 @@ export const assetsApi = {
         tags: r.tags ?? [],
         category: r.category ?? undefined,
         source,
+        origin,
         publishedAt: r.published_at,
         createdAt: r.created_at,
       };
@@ -137,6 +173,10 @@ export const assetsApi = {
 
     if (filters.source && filters.source !== "all") {
       out = out.filter((a) => a.source === filters.source);
+    }
+    // 当 origin 列不存在时，上面已 early return；这里是冗余保险。
+    if (filters.origin && filters.origin !== "all") {
+      out = out.filter((a) => a.origin === filters.origin);
     }
     if (filters.search) {
       const s = filters.search.toLowerCase();
