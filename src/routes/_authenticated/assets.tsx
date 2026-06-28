@@ -343,7 +343,18 @@ function AssetsPage() {
       <Dialog open={!!preview} onOpenChange={(o) => !o && setPreview(null)}>
         <DialogContent className="max-w-3xl">
           <DialogHeader>
-            <DialogTitle className="line-clamp-1">{preview?.title}</DialogTitle>
+            <DialogTitle className="line-clamp-1 flex items-center gap-2">
+              <span>{preview?.title}</span>
+              {preview && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-secondary px-2 py-0.5 text-[10px] font-semibold text-graphite">
+                  {preview.origin === "pc" ? (
+                    <><Monitor className="h-3 w-3" />PC 端</>
+                  ) : (
+                    <><Smartphone className="h-3 w-3" />手机端</>
+                  )}
+                </span>
+              )}
+            </DialogTitle>
           </DialogHeader>
           {preview && (
             <div className="space-y-3">
