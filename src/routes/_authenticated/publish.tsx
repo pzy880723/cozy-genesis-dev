@@ -13,7 +13,7 @@ import { Check, Sparkles, ChevronRight, Send } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Platform } from "@/types";
 
-export const Route = createFileRoute("/publish")({
+export const Route = createFileRoute("/_authenticated/publish")({
   head: () => ({ meta: [{ title: "发布中心 · BOOMER.OFF AIGC" }] }),
   component: PublishPage,
 });

@@ -11,7 +11,7 @@ import { Plus, Play, Pause, X, ZapOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { AutomationTask, Platform } from "@/types";
 
-export const Route = createFileRoute("/automation")({
+export const Route = createFileRoute("/_authenticated/automation")({
   head: () => ({ meta: [{ title: "自动化任务 · BOOMER.OFF AIGC" }] }),
   component: AutomationPage,
 });

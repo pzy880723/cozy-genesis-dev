@@ -3,7 +3,7 @@ import { AppShell } from "@/components/app/AppShell";
 import { PageHeader, Panel } from "@/components/app/PageHeader";
 import { Bot, BookOpen, Store, Shield, Send, Users } from "lucide-react";
 
-export const Route = createFileRoute("/settings")({
+export const Route = createFileRoute("/_authenticated/settings")({
   head: () => ({ meta: [{ title: "系统设置 · BOOMER.OFF AIGC" }] }),
   component: SettingsPage,
 });
