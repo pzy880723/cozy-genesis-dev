@@ -10,7 +10,7 @@ import { shopsApi } from "@/api/shops";
 import { Sparkles, Copy, Send, RefreshCw, Save, Film, FileText, Image as ImageIcon, Wand2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-export const Route = createFileRoute("/aigc")({
+export const Route = createFileRoute("/_authenticated/aigc")({
   head: () => ({ meta: [{ title: "AI 创作中心 · BOOMER.OFF AIGC" }] }),
   component: AigcPage,
 });

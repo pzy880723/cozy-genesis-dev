@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-export const Route = createFileRoute("/assets")({
+export const Route = createFileRoute("/_authenticated/assets")({
   head: () => ({ meta: [{ title: "素材库 · BOOMER.OFF AIGC" }] }),
   component: AssetsPage,
 });

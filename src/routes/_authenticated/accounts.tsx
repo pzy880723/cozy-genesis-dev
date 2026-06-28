@@ -11,7 +11,7 @@ import { QrCode, ScanLine, X, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Platform } from "@/types";
 
-export const Route = createFileRoute("/accounts")({
+export const Route = createFileRoute("/_authenticated/accounts")({
   head: () => ({ meta: [{ title: "账号管理 · BOOMER.OFF AIGC" }] }),
   component: AccountsPage,
 });

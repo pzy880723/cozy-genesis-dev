@@ -13,7 +13,7 @@ import { accountsApi } from "@/api/accounts";
 import { automationApi } from "@/api/automation";
 import { assetsApi } from "@/api/assets";
 
-export const Route = createFileRoute("/")({
+export const Route = createFileRoute("/_authenticated/")({
   head: () => ({
     meta: [
       { title: "工作台 · BOOMER.OFF AIGC" },
