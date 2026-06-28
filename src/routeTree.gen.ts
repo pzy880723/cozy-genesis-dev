@@ -16,7 +16,6 @@ import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticat
 import { Route as AuthenticatedPublishRouteImport } from './routes/_authenticated/publish'
 import { Route as AuthenticatedAutomationRouteImport } from './routes/_authenticated/automation'
 import { Route as AuthenticatedAssetsRouteImport } from './routes/_authenticated/assets'
-import { Route as AuthenticatedAigcRouteImport } from './routes/_authenticated/aigc'
 import { Route as AuthenticatedAccountsRouteImport } from './routes/_authenticated/accounts'
 
 const AuthRoute = AuthRouteImport.update({
@@ -53,11 +52,6 @@ const AuthenticatedAssetsRoute = AuthenticatedAssetsRouteImport.update({
   path: '/assets',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
-const AuthenticatedAigcRoute = AuthenticatedAigcRouteImport.update({
-  id: '/aigc',
-  path: '/aigc',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any)
 const AuthenticatedAccountsRoute = AuthenticatedAccountsRouteImport.update({
   id: '/accounts',
   path: '/accounts',
@@ -68,7 +62,6 @@ export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
   '/auth': typeof AuthRoute
   '/accounts': typeof AuthenticatedAccountsRoute
-  '/aigc': typeof AuthenticatedAigcRoute
   '/assets': typeof AuthenticatedAssetsRoute
   '/automation': typeof AuthenticatedAutomationRoute
   '/publish': typeof AuthenticatedPublishRoute
@@ -77,7 +70,6 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/auth': typeof AuthRoute
   '/accounts': typeof AuthenticatedAccountsRoute
-  '/aigc': typeof AuthenticatedAigcRoute
   '/assets': typeof AuthenticatedAssetsRoute
   '/automation': typeof AuthenticatedAutomationRoute
   '/publish': typeof AuthenticatedPublishRoute
@@ -89,7 +81,6 @@ export interface FileRoutesById {
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/auth': typeof AuthRoute
   '/_authenticated/accounts': typeof AuthenticatedAccountsRoute
-  '/_authenticated/aigc': typeof AuthenticatedAigcRoute
   '/_authenticated/assets': typeof AuthenticatedAssetsRoute
   '/_authenticated/automation': typeof AuthenticatedAutomationRoute
   '/_authenticated/publish': typeof AuthenticatedPublishRoute
@@ -102,7 +93,6 @@ export interface FileRouteTypes {
     | '/'
     | '/auth'
     | '/accounts'
-    | '/aigc'
     | '/assets'
     | '/automation'
     | '/publish'
@@ -111,7 +101,6 @@ export interface FileRouteTypes {
   to:
     | '/auth'
     | '/accounts'
-    | '/aigc'
     | '/assets'
     | '/automation'
     | '/publish'
@@ -122,7 +111,6 @@ export interface FileRouteTypes {
     | '/_authenticated'
     | '/auth'
     | '/_authenticated/accounts'
-    | '/_authenticated/aigc'
     | '/_authenticated/assets'
     | '/_authenticated/automation'
     | '/_authenticated/publish'
@@ -186,13 +174,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAssetsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
-    '/_authenticated/aigc': {
-      id: '/_authenticated/aigc'
-      path: '/aigc'
-      fullPath: '/aigc'
-      preLoaderRoute: typeof AuthenticatedAigcRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
     '/_authenticated/accounts': {
       id: '/_authenticated/accounts'
       path: '/accounts'
@@ -205,7 +186,6 @@ declare module '@tanstack/react-router' {
 
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedAccountsRoute: typeof AuthenticatedAccountsRoute
-  AuthenticatedAigcRoute: typeof AuthenticatedAigcRoute
   AuthenticatedAssetsRoute: typeof AuthenticatedAssetsRoute
   AuthenticatedAutomationRoute: typeof AuthenticatedAutomationRoute
   AuthenticatedPublishRoute: typeof AuthenticatedPublishRoute
@@ -215,7 +195,6 @@ interface AuthenticatedRouteRouteChildren {
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAccountsRoute: AuthenticatedAccountsRoute,
-  AuthenticatedAigcRoute: AuthenticatedAigcRoute,
   AuthenticatedAssetsRoute: AuthenticatedAssetsRoute,
   AuthenticatedAutomationRoute: AuthenticatedAutomationRoute,
   AuthenticatedPublishRoute: AuthenticatedPublishRoute,
