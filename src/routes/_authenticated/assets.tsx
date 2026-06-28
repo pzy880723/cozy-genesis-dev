@@ -29,6 +29,8 @@ import {
   Maximize2,
   Send,
   Play,
+  Smartphone,
+  Monitor,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -48,7 +50,7 @@ const KINDS: { key: AssetKind | "all"; label: string; icon: React.ComponentType<
 ];
 
 function AssetsPage() {
-  const [filters, setFilters] = useState<AssetFilters>({ kind: "all", shopId: "all", source: "all" });
+  const [filters, setFilters] = useState<AssetFilters>({ kind: "all", shopId: "all", source: "all", origin: "all" });
   const [view, setView] = useState<"grid" | "list">("grid");
   const [preview, setPreview] = useState<Asset | null>(null);
   const [tagPanelOpen, setTagPanelOpen] = useState(false);
@@ -124,6 +126,16 @@ function AssetsPage() {
           <option value="all">全部来源</option>
           <option value="upload">门店上传</option>
           <option value="ai">AI 生成</option>
+        </select>
+        <select
+          className="h-7 rounded border border-border bg-white px-2 text-xs font-semibold"
+          value={filters.origin ?? "all"}
+          onChange={(e) => setFilters((f) => ({ ...f, origin: e.target.value as AssetFilters["origin"] }))}
+          title="区分手机端 App 同步的素材和 PC 端本地生成的素材"
+        >
+          <option value="all">全部端</option>
+          <option value="mobile">📱 手机端</option>
+          <option value="pc">💻 PC 端</option>
         </select>
         <div className="flex h-7 items-center overflow-hidden rounded border border-border bg-white">
           <button
@@ -234,6 +246,17 @@ function AssetsPage() {
                             <Play className="h-3 w-3" /> 视频
                           </div>
                         )}
+                        {/* 来源角标（手机/PC） */}
+                        <div
+                          className="pointer-events-none absolute left-1.5 bottom-1.5 flex h-5 items-center gap-0.5 rounded-full bg-black/55 px-1.5 text-[10px] font-semibold text-white"
+                          title={a.origin === "pc" ? "PC 端生成" : "手机端"}
+                        >
+                          {a.origin === "pc" ? (
+                            <><Monitor className="h-3 w-3" />PC</>
+                          ) : (
+                            <><Smartphone className="h-3 w-3" />手机</>
+                          )}
+                        </div>
                         {/* 放大入口 */}
                         <span className="pointer-events-none absolute right-1.5 top-1.5 flex h-7 w-7 items-center justify-center rounded-full bg-black/55 text-white opacity-0 transition group-hover:opacity-100">
                           <Maximize2 className="h-3.5 w-3.5" />
@@ -320,7 +343,18 @@ function AssetsPage() {
       <Dialog open={!!preview} onOpenChange={(o) => !o && setPreview(null)}>
         <DialogContent className="max-w-3xl">
           <DialogHeader>
-            <DialogTitle className="line-clamp-1">{preview?.title}</DialogTitle>
+            <DialogTitle className="line-clamp-1 flex items-center gap-2">
+              <span>{preview?.title}</span>
+              {preview && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-secondary px-2 py-0.5 text-[10px] font-semibold text-graphite">
+                  {preview.origin === "pc" ? (
+                    <><Monitor className="h-3 w-3" />PC 端</>
+                  ) : (
+                    <><Smartphone className="h-3 w-3" />手机端</>
+                  )}
+                </span>
+              )}
+            </DialogTitle>
           </DialogHeader>
           {preview && (
             <div className="space-y-3">

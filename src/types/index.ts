@@ -13,6 +13,8 @@ export type AssetKind =
   | "character"
   | "product";
 
+export type AssetOrigin = "mobile" | "pc";
+
 export type Asset = {
   id: string;
   shopId: string | null;
@@ -26,6 +28,7 @@ export type Asset = {
   tags: string[];
   category?: string;
   source?: "upload" | "ai";
+  origin?: AssetOrigin;
   publishedAt?: string | null;
   createdAt: string;
 };
