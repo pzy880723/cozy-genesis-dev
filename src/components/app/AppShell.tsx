@@ -16,8 +16,8 @@ import { cn } from "@/lib/utils";
 
 const NAV = [
   { to: "/", label: "工作台", icon: LayoutDashboard },
-  { to: "/assets", label: "素材库", icon: ImagePlay },
   { to: "/aigc", label: "AI 创作中心", icon: Sparkles },
+  { to: "/assets", label: "素材库", icon: ImagePlay },
   { to: "/publish", label: "发布中心", icon: Send },
   { to: "/automation", label: "自动化任务", icon: Bot },
   { to: "/accounts", label: "账号管理", icon: KeyRound },
