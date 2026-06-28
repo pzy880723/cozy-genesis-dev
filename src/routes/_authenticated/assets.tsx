@@ -202,7 +202,7 @@ function AssetsPage() {
                   return (
                     <div
                       key={a.id}
-                      className="group overflow-hidden rounded-md border border-border bg-white"
+                      className="group overflow-hidden rounded-md"
                     >
                       <button
                         onClick={() => setPreview(a)}
@@ -275,24 +275,19 @@ function AssetsPage() {
                                 handlePublish(a);
                               }
                             }}
-                            className="absolute bottom-1.5 right-1.5 flex h-7 w-7 cursor-pointer items-center justify-center rounded-full bg-primary text-primary-foreground opacity-0 shadow transition hover:opacity-100 group-hover:opacity-100"
+                            className="pointer-events-none absolute bottom-1.5 right-1.5 flex h-7 w-7 cursor-pointer items-center justify-center rounded-full bg-primary text-primary-foreground opacity-0 shadow transition group-hover:pointer-events-auto group-hover:opacity-100"
                             aria-label="发布"
                           >
                             <Send className="h-3.5 w-3.5" />
                           </span>
                         )}
+                        {/* hover 时底部门店名渐变条 */}
+                        {a.shopName && (
+                          <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end bg-gradient-to-t from-black/55 to-transparent p-2 opacity-0 transition group-hover:opacity-100">
+                            <span className="line-clamp-1 text-[10px] font-semibold text-white">{a.shopName}</span>
+                          </div>
+                        )}
                       </button>
-                      <div className="px-2.5 py-2">
-                        <div className="line-clamp-1 text-[12px] font-bold">{a.title}</div>
-                        <div className="mt-0.5 flex items-center justify-between text-[10px] text-muted-foreground">
-                          <span className="line-clamp-1">{a.shopName ?? "—"}</span>
-                          {a.source === "ai" ? (
-                            <StatusBadge tone="info" className="h-4 px-1 text-[9px]">AI</StatusBadge>
-                          ) : (
-                            <span>上传</span>
-                          )}
-                        </div>
-                      </div>
                     </div>
                   );
                 })}
