@@ -10,11 +10,17 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as AssetsRouteImport } from './routes/assets'
+import { Route as AigcRouteImport } from './routes/aigc'
 import { Route as IndexRouteImport } from './routes/index'
 
 const AssetsRoute = AssetsRouteImport.update({
   id: '/assets',
   path: '/assets',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AigcRoute = AigcRouteImport.update({
+  id: '/aigc',
+  path: '/aigc',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -25,27 +31,31 @@ const IndexRoute = IndexRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/aigc': typeof AigcRoute
   '/assets': typeof AssetsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/aigc': typeof AigcRoute
   '/assets': typeof AssetsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/aigc': typeof AigcRoute
   '/assets': typeof AssetsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/assets'
+  fullPaths: '/' | '/aigc' | '/assets'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/assets'
-  id: '__root__' | '/' | '/assets'
+  to: '/' | '/aigc' | '/assets'
+  id: '__root__' | '/' | '/aigc' | '/assets'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AigcRoute: typeof AigcRoute
   AssetsRoute: typeof AssetsRoute
 }
 
@@ -56,6 +66,13 @@ declare module '@tanstack/react-router' {
       path: '/assets'
       fullPath: '/assets'
       preLoaderRoute: typeof AssetsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/aigc': {
+      id: '/aigc'
+      path: '/aigc'
+      fullPath: '/aigc'
+      preLoaderRoute: typeof AigcRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -70,6 +87,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AigcRoute: AigcRoute,
   AssetsRoute: AssetsRoute,
 }
 export const routeTree = rootRouteImport
