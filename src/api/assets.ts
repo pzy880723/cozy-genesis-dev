@@ -100,7 +100,8 @@ export const assetsApi = {
       }
     }
     if (filters.origin && filters.origin !== "all") {
-      q = q.eq("origin", filters.origin);
+      // origin 列是后加的，types.ts 还未包含，绕过类型检查
+      q = (q as any).eq("origin", filters.origin);
     }
     const limit = filters.limit ?? 120;
     const offset = filters.offset ?? 0;
