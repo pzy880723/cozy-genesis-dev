@@ -148,7 +148,7 @@ export const assetsApi = {
         : "mobile";
       const title: string =
         meta.title ??
-        (r.output_text ? String(r.output_text).slice(0, 30) : "未命名素材");
+        (r.output_text ? String(r.output_text).slice(0, 30) : "");
       // 视频优先用 meta 里可能存在的封面字段
       const videoPoster: string | undefined =
         meta.thumbnail_url ?? meta.poster ?? meta.cover_url ?? meta.cover;
