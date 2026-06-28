@@ -29,6 +29,8 @@ import {
   Maximize2,
   Send,
   Play,
+  Smartphone,
+  Monitor,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -48,7 +50,7 @@ const KINDS: { key: AssetKind | "all"; label: string; icon: React.ComponentType<
 ];
 
 function AssetsPage() {
-  const [filters, setFilters] = useState<AssetFilters>({ kind: "all", shopId: "all", source: "all" });
+  const [filters, setFilters] = useState<AssetFilters>({ kind: "all", shopId: "all", source: "all", origin: "all" });
   const [view, setView] = useState<"grid" | "list">("grid");
   const [preview, setPreview] = useState<Asset | null>(null);
   const [tagPanelOpen, setTagPanelOpen] = useState(false);
@@ -124,6 +126,16 @@ function AssetsPage() {
           <option value="all">全部来源</option>
           <option value="upload">门店上传</option>
           <option value="ai">AI 生成</option>
+        </select>
+        <select
+          className="h-7 rounded border border-border bg-white px-2 text-xs font-semibold"
+          value={filters.origin ?? "all"}
+          onChange={(e) => setFilters((f) => ({ ...f, origin: e.target.value as AssetFilters["origin"] }))}
+          title="区分手机端 App 同步的素材和 PC 端本地生成的素材"
+        >
+          <option value="all">全部端</option>
+          <option value="mobile">📱 手机端</option>
+          <option value="pc">💻 PC 端</option>
         </select>
         <div className="flex h-7 items-center overflow-hidden rounded border border-border bg-white">
           <button
