@@ -337,7 +337,7 @@ function AssetsPage() {
         <DialogContent className="max-w-3xl">
           <DialogHeader>
             <DialogTitle className="line-clamp-1 flex items-center gap-2">
-              <span>{preview?.title}</span>
+              {preview?.title ? <span>{preview.title}</span> : <span className="text-muted-foreground">素材预览</span>}
               {preview && (
                 <span className="inline-flex items-center gap-1 rounded-full bg-secondary px-2 py-0.5 text-[10px] font-semibold text-graphite">
                   {preview.origin === "pc" ? (
@@ -351,19 +351,51 @@ function AssetsPage() {
           </DialogHeader>
           {preview && (
             <div className="space-y-3">
-              <div className="flex max-h-[70vh] items-center justify-center overflow-hidden rounded-md bg-black/5">
+              <div className="flex max-h-[70vh] items-center justify-center rounded-md bg-black/5">
                 {preview.kind === "video" && preview.outputUrl ? (
-                  <video src={preview.outputUrl} controls autoPlay className="max-h-[70vh] w-full" />
+                  <video
+                    src={preview.outputUrl}
+                    controls
+                    playsInline
+                    preload="metadata"
+                    poster={preview.thumbnailUrl}
+                    className="max-h-[70vh] w-full"
+                  />
                 ) : preview.kind === "copy" && preview.text ? (
                   <pre className="max-h-[70vh] w-full overflow-auto whitespace-pre-wrap p-4 text-sm">{preview.text}</pre>
                 ) : preview.outputUrl ? (
-                  <img src={preview.outputUrl} alt={preview.title} className="max-h-[70vh] w-auto object-contain" />
+                  <img
+                    src={preview.outputUrl}
+                    alt={preview.title || "素材"}
+                    className="max-h-[70vh] w-auto object-contain"
+                    onError={(e) => {
+                      const img = e.currentTarget as HTMLImageElement;
+                      if (preview.thumbnailUrl && img.src !== preview.thumbnailUrl) {
+                        img.src = preview.thumbnailUrl;
+                      }
+                    }}
+                  />
                 ) : (
                   <div className="p-8 text-sm text-muted-foreground">无可预览内容</div>
                 )}
               </div>
               <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <span>{preview.shopName ?? "—"} · {preview.createdAt}</span>
+                <span>
+                  {preview.shopName ?? "—"} · {preview.createdAt}
+                  {preview.outputUrl && (
+                    <>
+                      {" · "}
+                      <a
+                        href={preview.outputUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-primary hover:underline"
+                      >
+                        新窗口打开
+                      </a>
+                    </>
+                  )}
+                </span>
                 {(preview.kind === "image" || preview.kind === "video") && (
                   <button
                     onClick={() => { handlePublish(preview); setPreview(null); }}
