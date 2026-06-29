@@ -40,7 +40,7 @@ export const Route = createFileRoute("/api/public/worker/cron-tick")({
 
         // 1) 候选 pending targets（先按 platform 过滤 + due schedule）
         let q = admin
-          .from("social_publish_targets")
+          .from("social_publish_targets" as any)
           .select("id, job_id, platform, account_id")
           .eq("status", "pending")
           .order("created_at", { ascending: true })
@@ -55,9 +55,10 @@ export const Route = createFileRoute("/api/public/worker/cron-tick")({
         }
 
         // 2) 过滤掉父 job 已被取消 / schedule_at 未到
-        const jobIds = Array.from(new Set(candidates.map((t) => t.job_id)));
-        const { data: jobRows, error: jobErr } = await admin
-          .from("social_publish_jobs")
+        const candRows = (candidates ?? []) as any[];
+        const jobIds = Array.from(new Set(candRows.map((t) => t.job_id)));
+        const { data: jobRowsRaw, error: jobErr } = await admin
+          .from("social_publish_jobs" as any)
           .select(
             "id, shop_id, kind, title, body, tags, schedule_at, status, per_platform, cover_url, media_url, images, automation_task_id",
           )
@@ -65,9 +66,10 @@ export const Route = createFileRoute("/api/public/worker/cron-tick")({
         if (jobErr) {
           return Response.json({ ok: false, error: jobErr.message }, { status: 500 });
         }
-        const jobMap = new Map((jobRows ?? []).map((j) => [j.id, j]));
+        const jobRows = (jobRowsRaw ?? []) as any[];
+        const jobMap = new Map<string, any>(jobRows.map((j) => [j.id, j]));
         const nowMs = Date.now();
-        const claimable = candidates.filter((t) => {
+        const claimable = candRows.filter((t) => {
           const j = jobMap.get(t.job_id);
           if (!j) return false;
           if (j.status === "cancelled" || j.status === "failed") return false;
@@ -77,12 +79,12 @@ export const Route = createFileRoute("/api/public/worker/cron-tick")({
         if (!claimable.length) return Response.json({ ok: true, targets: [] });
 
         // 3) 原子 claim：把 status pending → claimed，写入 claim_token / worker_task_id / claim_expires_at
-        const claimIds = claimable.map((t) => t.id);
+        const claimIds = claimable.map((t) => t.id as string);
         const claimExpiresAt = new Date(nowMs + 15 * 60 * 1000).toISOString();
         const claimToken = (globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`);
         const workerTaskId = `${workerId}:${claimToken}`;
-        const { data: claimed, error: claimErr } = await admin
-          .from("social_publish_targets")
+        const { data: claimedRaw, error: claimErr } = await admin
+          .from("social_publish_targets" as any)
           .update({
             status: "claimed",
             claim_token: claimToken,
@@ -98,10 +100,11 @@ export const Route = createFileRoute("/api/public/worker/cron-tick")({
         if (claimErr) {
           return Response.json({ ok: false, error: claimErr.message }, { status: 500 });
         }
-        if (!claimed?.length) return Response.json({ ok: true, targets: [] });
+        const claimed = (claimedRaw ?? []) as any[];
+        if (!claimed.length) return Response.json({ ok: true, targets: [] });
 
         // 4) 拉账号 + 素材
-        const accountIds = Array.from(new Set(claimed.map((t) => t.account_id)));
+        const accountIds = Array.from(new Set(claimed.map((t) => t.account_id as string)));
         const { data: accounts } = await admin
           .from("social_accounts")
           .select("id, account_name, worker_account_key, worker_account_id, platform, cookie_status")
@@ -110,7 +113,7 @@ export const Route = createFileRoute("/api/public/worker/cron-tick")({
 
         const allAssetIds = Array.from(
           new Set(
-            (jobRows ?? []).flatMap((j) => {
+            jobRows.flatMap((j: any) => {
               const per = (j.per_platform ?? {}) as any;
               const ids = Array.isArray(per?.asset_ids) ? per.asset_ids : [];
               return ids.filter((x: unknown) => typeof x === "string");
@@ -130,7 +133,7 @@ export const Route = createFileRoute("/api/public/worker/cron-tick")({
 
         // 5) 升 job → running
         await admin
-          .from("social_publish_jobs")
+          .from("social_publish_jobs" as any)
           .update({ status: "running", updated_at: new Date().toISOString() } as any)
           .in("id", jobIds)
           .eq("status", "queued");
@@ -146,7 +149,8 @@ export const Route = createFileRoute("/api/public/worker/cron-tick")({
             .filter((u): u is string => typeof u === "string" && u.length > 0);
           // 兼容历史：如果 job.media_url / images 也填了，合并去重
           if (job.media_url) assetUrls.push(job.media_url);
-          if (Array.isArray(job.images)) assetUrls.push(...job.images.filter((x) => typeof x === "string"));
+          if (Array.isArray(job.images))
+            assetUrls.push(...job.images.filter((x: unknown): x is string => typeof x === "string"));
           const dedupAssetUrls = Array.from(new Set(assetUrls));
 
           return {

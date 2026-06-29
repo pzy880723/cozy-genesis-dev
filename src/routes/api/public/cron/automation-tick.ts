@@ -55,9 +55,9 @@ export const Route = createFileRoute("/api/public/cron/automation-tick")({
 
             // 今日已生成数
             const { count } = await admin
-              .from("social_publish_jobs")
+              .from("social_publish_jobs" as any)
               .select("id", { head: true, count: "exact" })
-              .eq("automation_task_id", t.id)
+              .eq("automation_task_id" as any, t.id)
               .gte("created_at", todayStart.toISOString());
             if ((count ?? 0) >= (t.daily_limit ?? 1)) {
               results.push({ id: t.id, skipped: "daily_limit_reached", count });
@@ -107,14 +107,15 @@ export const Route = createFileRoute("/api/public/cron/automation-tick")({
               },
             };
             const { data: job, error: jobErr } = await admin
-              .from("social_publish_jobs")
-              .insert(jobInsert)
+              .from("social_publish_jobs" as any)
+              .insert(jobInsert as any)
               .select("id")
               .single();
             if (jobErr || !job) throw jobErr ?? new Error("job insert failed");
+            const jobId = (job as any).id as string;
 
             const targetRows = picks.map((p) => ({
-              job_id: job.id,
+              job_id: jobId,
               account_id: p.account_id,
               platform: p.platform,
               status: "pending" as const,
@@ -133,7 +134,7 @@ export const Route = createFileRoute("/api/public/cron/automation-tick")({
               })
               .eq("id", t.id);
 
-            results.push({ id: t.id, ok: true, job_id: job.id, targets: picks.length });
+            results.push({ id: t.id, ok: true, job_id: jobId, targets: picks.length });
           } catch (e) {
             const msg = e instanceof Error ? e.message : String(e);
             await applyFailurePolicy(admin, t, msg);

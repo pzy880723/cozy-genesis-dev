@@ -61,14 +61,15 @@ export const Route = createFileRoute("/api/public/worker/callback")({
               return Response.json({ ok: false, error: "missing target_id" }, { status: 400 });
             }
             // claim_token 校验：可选但推荐
-            const { data: cur, error: curErr } = await admin
-              .from("social_publish_targets")
+            const { data: curRaw, error: curErr } = await admin
+              .from("social_publish_targets" as any)
               .select("id, status, claim_token, retry_count, job_id, account_id")
               .eq("id", targetId)
               .maybeSingle();
-            if (curErr || !cur) {
+            if (curErr || !curRaw) {
               return Response.json({ ok: false, error: "target not found" }, { status: 404 });
             }
+            const cur = curRaw as any;
             if (
               payload.claim_token &&
               cur.claim_token &&
@@ -87,13 +88,13 @@ export const Route = createFileRoute("/api/public/worker/callback")({
               }
               if (typeof data.step === "string") patch.last_step = data.step;
               if (cur.status !== "running") patch.status = "running";
-              await admin.from("social_publish_targets").update(patch).eq("id", targetId);
+              await admin.from("social_publish_targets" as any).update(patch).eq("id", targetId);
               return Response.json({ ok: true });
             }
 
             if (event === "target.success") {
               await admin
-                .from("social_publish_targets")
+                .from("social_publish_targets" as any)
                 .update({
                   status: "success",
                   progress: 100,
@@ -115,7 +116,7 @@ export const Route = createFileRoute("/api/public/worker/callback")({
                 Number.isFinite(retryAfter) && retryAfter > 0 && (cur.retry_count ?? 0) < 3;
               if (canRetry) {
                 await admin
-                  .from("social_publish_targets")
+                  .from("social_publish_targets" as any)
                   .update({
                     status: "pending",
                     retry_count: (cur.retry_count ?? 0) + 1,
@@ -130,7 +131,7 @@ export const Route = createFileRoute("/api/public/worker/callback")({
                   .eq("id", targetId);
               } else {
                 await admin
-                  .from("social_publish_targets")
+                  .from("social_publish_targets" as any)
                   .update({
                     status: "failed",
                     error_message: data.error_message ?? "unknown error",
@@ -145,7 +146,7 @@ export const Route = createFileRoute("/api/public/worker/callback")({
 
             if (event === "target.cancelled") {
               await admin
-                .from("social_publish_targets")
+                .from("social_publish_targets" as any)
                 .update({
                   status: "cancelled",
                   finished_at: now,
