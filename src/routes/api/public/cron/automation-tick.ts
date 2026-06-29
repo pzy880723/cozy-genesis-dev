@@ -54,11 +54,12 @@ export const Route = createFileRoute("/api/public/cron/automation-tick")({
             }
 
             // 今日已生成数
-            const { count } = await admin
-              .from("social_publish_jobs" as any)
+            const countRes = await (admin as any)
+              .from("social_publish_jobs")
               .select("id", { head: true, count: "exact" })
-              .eq("automation_task_id" as any, t.id)
+              .eq("automation_task_id", t.id)
               .gte("created_at", todayStart.toISOString());
+            const count: number = countRes?.count ?? 0;
             if ((count ?? 0) >= (t.daily_limit ?? 1)) {
               results.push({ id: t.id, skipped: "daily_limit_reached", count });
               continue;
