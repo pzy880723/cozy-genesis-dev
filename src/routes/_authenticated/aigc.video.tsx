@@ -33,16 +33,17 @@ const STYLES = [
 const DURATIONS = [15, 20, 30, 45, 60] as const;
 const ASPECTS = ["9:16", "1:1", "16:9"] as const;
 const MODELS = [
-  { id: "seedance-2-pro", label: "Seedance 2.0 Pro · 写实最佳" },
-  { id: "seedance-2-lite", label: "Seedance 2.0 Lite · 速度优先" },
-  { id: "seedance-1", label: "Seedance 1.0 · 兜底" },
-];
+  { id: "seedance-2-pro", label: "PRO", hint: "写实最佳 · 慢" },
+  { id: "seedance-2-lite", label: "Fast", hint: "速度优先" },
+] as const;
 const RESOLUTIONS = ["480p", "720p", "1080p"] as const;
 const STRATEGIES = [
   { v: "auto", label: "自动" },
   { v: "one_shot", label: "整段一次" },
   { v: "per_shot", label: "按镜分段" },
 ] as const;
+const REF_MAX = 20;
+const CHARACTERS = ["店员小 K", "顾客阿桃", "暂不选"] as const;
 
 function VideoFlow() {
   const shops = useQuery({ queryKey: ["shops"], queryFn: () => shopsApi.list() });
@@ -72,7 +73,7 @@ function VideoFlow() {
   const [sbBusy, setSbBusy] = useState(false);
 
   // render
-  const [modelId, setModelId] = useState(MODELS[0].id);
+  const [modelId, setModelId] = useState<string>(MODELS[0].id);
   const [resolution, setResolution] = useState<(typeof RESOLUTIONS)[number]>("720p");
   const [realism, setRealism] = useState<"real" | "illustration">("real");
   const [strategy, setStrategy] = useState<(typeof STRATEGIES)[number]["v"]>("auto");
@@ -111,13 +112,16 @@ function VideoFlow() {
       const r = await aigcApi.generateVideoScript(buildBrief());
       const s: Script = { title: r.title, scenes: r.scenes.map((sc) => ({ ...sc })) };
       setScript(s);
-      // auto-storyboard
-      setSbBusy(true);
-      try {
-        const sb = await aigcApi.generateStoryboard({ scenes: s.scenes });
-        setScript({ title: s.title, scenes: sb.scenes });
-      } finally { setSbBusy(false); }
     } finally { setScriptBusy(false); }
+  };
+
+  const genStoryboard = async () => {
+    if (!script) return;
+    setSbBusy(true);
+    try {
+      const sb = await aigcApi.generateStoryboard({ scenes: script.scenes });
+      setScript({ title: script.title, scenes: sb.scenes });
+    } finally { setSbBusy(false); }
   };
 
   const redoScene = async (idx: number) => {
@@ -159,7 +163,7 @@ function VideoFlow() {
     <AppShell>
       <PageHeader
         title="AI 短视频生成"
-        description="选店铺 / 参考素材 · 聊立意 · 设参数 · 生成脚本 + 分镜静帧 · 渲染出片"
+        description="先定参数 → 选参考图 → 选主角 → 聊脚本 → 生成分镜 → 渲染出片"
         actions={
           <Link to="/aigc" className="inline-flex h-9 items-center gap-1.5 rounded-md border border-border bg-white px-3 text-xs font-bold text-graphite hover:bg-secondary">
             <ArrowLeft className="h-3.5 w-3.5" /> 返回创作中心
@@ -168,11 +172,23 @@ function VideoFlow() {
       />
 
       <div className="space-y-4">
-        {/* Step 1 */}
-        <StepPanel num="01" title="归属 & 参考素材" hint="先选门店和要参考的图，AI 会理解每张图说了什么">
-          <div className="grid grid-cols-[260px_1fr_220px] gap-4 p-4">
+        {/* Step 01 · 视频基础设置 */}
+        <StepPanel num="01" title="视频基础设置" hint="类型 · 情绪 · 画风 · 时长 · 画幅 · 模型">
+          <div className="grid grid-cols-2 gap-x-6 gap-y-4 p-4">
+            <ChoiceRow label="视频类型" value={vtype} options={VIDEO_TYPES.map((t) => ({ v: t.v, label: t.label }))} onChange={(v) => setVtype(v as any)} />
+            <ChoiceRow label="情绪风格" value={style} options={STYLES.map((t) => ({ v: t.v, label: t.label }))} onChange={(v) => setStyle(v as any)} />
+            <ChoiceRow label="画风" value={realism} options={[{ v: "real", label: "真人写实" }, { v: "illustration", label: "插画" }]} onChange={(v) => setRealism(v as any)} />
+            <ChoiceRow label="时长" value={String(duration)} options={DURATIONS.map((d) => ({ v: String(d), label: `${d}s` }))} onChange={(v) => setDuration(Number(v))} />
+            <ChoiceRow label="画幅" value={aspect} options={ASPECTS.map((a) => ({ v: a, label: a }))} onChange={(v) => setAspect(v as any)} />
+            <ChoiceRow label="渲染模型" value={modelId} options={MODELS.map((m) => ({ v: m.id, label: `${m.label} · ${m.hint}` }))} onChange={(v) => setModelId(v)} />
+          </div>
+        </StepPanel>
+
+        {/* Step 02 · 参考图 */}
+        <StepPanel num="02" title="参考图" hint={`最多 ${REF_MAX} 张 · 已选 ${refImages.length}/${REF_MAX}`}>
+          <div className="grid grid-cols-[260px_1fr] gap-4 p-4">
             <div>
-              <Label>门店</Label>
+              <Label>归属门店</Label>
               <select
                 value={shopId}
                 onChange={(e) => setShopId(e.target.value)}
@@ -182,19 +198,31 @@ function VideoFlow() {
                   <option key={s.id} value={s.id}>{s.name}</option>
                 ))}
               </select>
+              {refImages.length > 0 && (
+                <div className="mt-3 space-y-1">
+                  <Label>已选 {refImages.length}/{REF_MAX}</Label>
+                  <button
+                    onClick={() => setRefImages([])}
+                    className="inline-flex h-7 items-center gap-1 rounded-md border border-border bg-white px-2 text-[11px] font-bold text-graphite hover:bg-secondary"
+                  ><X className="h-3 w-3" /> 清空</button>
+                </div>
+              )}
             </div>
             <div>
-              <Label>参考图（{refImages.length} 已选）</Label>
+              <Label>从素材库挑选</Label>
               <div className="mt-1 grid grid-cols-6 gap-2">
-                {(assets.data ?? []).slice(0, 12).map((a) => {
+                {(assets.data ?? []).map((a) => {
                   const on = refImages.includes(a.id);
+                  const reachedMax = refImages.length >= REF_MAX && !on;
                   return (
                     <button
                       key={a.id}
+                      disabled={reachedMax}
                       onClick={() => setRefImages((arr) => on ? arr.filter((x) => x !== a.id) : [...arr, a.id])}
                       className={cn(
                         "relative aspect-square overflow-hidden rounded-md border-2",
                         on ? "border-primary" : "border-transparent hover:border-border",
+                        reachedMax && "opacity-40 cursor-not-allowed",
                       )}
                     >
                       {a.thumbnailUrl ? (
@@ -210,34 +238,55 @@ function VideoFlow() {
                     </button>
                   );
                 })}
-                <button className="flex aspect-square items-center justify-center rounded-md border-2 border-dashed border-border text-muted-foreground hover:border-primary hover:text-primary">
+                <button
+                  disabled={refImages.length >= REF_MAX}
+                  className="flex aspect-square items-center justify-center rounded-md border-2 border-dashed border-border text-muted-foreground hover:border-primary hover:text-primary disabled:opacity-40"
+                >
                   <ImagePlus className="h-5 w-5" />
                 </button>
               </div>
-            </div>
-            <div>
-              <Label>主角色（可选）</Label>
-              <div className="mt-1 space-y-1.5">
-                {["店员小 K", "顾客阿桃", "暂不选"].map((c) => {
-                  const on = character === c || (c === "暂不选" && !character);
-                  return (
-                    <button
-                      key={c}
-                      onClick={() => setCharacter(c === "暂不选" ? null : c)}
-                      className={cn(
-                        "w-full rounded-md border px-3 py-2 text-left text-xs font-bold",
-                        on ? "border-primary bg-primary-soft text-primary" : "border-border bg-white text-graphite hover:bg-secondary",
-                      )}
-                    >{c}</button>
-                  );
-                })}
-              </div>
+              {refImages.length >= REF_MAX && (
+                <p className="mt-2 text-[11px] font-bold text-amber-600">已达上限 {REF_MAX} 张，先移除再加新图。</p>
+              )}
             </div>
           </div>
         </StepPanel>
 
-        {/* Step 2 */}
-        <StepPanel num="02" title="立意 · 跟 AI 聊一句你想拍什么" hint="多聊几轮，AI 会先给出脚本草稿">
+        {/* Step 03 · 主角 */}
+        <StepPanel num="03" title="主角" hint="可选，不选则按场景自动生成出镜">
+          <div className="grid grid-cols-3 gap-3 p-4">
+            {CHARACTERS.map((c) => {
+              const on = character === c || (c === "暂不选" && !character);
+              return (
+                <button
+                  key={c}
+                  onClick={() => setCharacter(c === "暂不选" ? null : c)}
+                  className={cn(
+                    "rounded-md border px-3 py-3 text-left text-xs font-bold",
+                    on ? "border-primary bg-primary-soft text-primary" : "border-border bg-white text-graphite hover:bg-secondary",
+                  )}
+                >{c}</button>
+              );
+            })}
+          </div>
+        </StepPanel>
+
+        {/* Step 04 · 立意对话生成脚本 */}
+        <StepPanel
+          num="04"
+          title="立意对话 · 生成脚本"
+          hint={script ? `脚本就绪 · ${script.scenes.length} 个场景` : "先和 AI 聊几句，再生成脚本"}
+          actions={
+            <button
+              onClick={genScript}
+              disabled={scriptBusy || !shopId}
+              className="inline-flex h-8 items-center gap-1.5 rounded-md bg-primary px-3 text-xs font-bold text-primary-foreground disabled:opacity-50"
+            >
+              {scriptBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />}
+              {script ? "重新生成脚本" : "生成脚本"}
+            </button>
+          }
+        >
           <div className="grid grid-cols-[1fr_320px] gap-4 p-4">
             <div className="flex h-72 flex-col rounded-md border border-border bg-secondary/40">
               <div className="flex-1 space-y-2 overflow-auto p-3">
@@ -284,39 +333,54 @@ function VideoFlow() {
               </p>
             </div>
           </div>
-        </StepPanel>
-
-        {/* Step 3 */}
-        <StepPanel num="03" title="视频参数">
-          <div className="grid grid-cols-2 gap-x-6 gap-y-4 p-4">
-            <ChoiceRow label="类型" value={vtype} options={VIDEO_TYPES.map((t) => ({ v: t.v, label: t.label }))} onChange={(v) => setVtype(v as any)} />
-            <ChoiceRow label="风格" value={style} options={STYLES.map((t) => ({ v: t.v, label: t.label }))} onChange={(v) => setStyle(v as any)} />
-            <ChoiceRow label="时长" value={String(duration)} options={DURATIONS.map((d) => ({ v: String(d), label: `${d}s` }))} onChange={(v) => setDuration(Number(v))} />
-            <ChoiceRow label="比例" value={aspect} options={ASPECTS.map((a) => ({ v: a, label: a }))} onChange={(v) => setAspect(v as any)} />
+          <div className="border-t border-border p-4">
+            {!script ? (
+              <div className="rounded-md border border-dashed border-border p-8 text-center text-xs text-muted-foreground">
+                先聊立意，点右上「生成脚本」。
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <div className="text-sm font-black">{script.title}</div>
+                <div className="grid gap-2">
+                  {script.scenes.map((sc) => (
+                    <div key={sc.id} className="rounded-md border border-border bg-card p-3">
+                      <div className="flex items-center gap-2">
+                        <span className="rounded bg-secondary px-1.5 py-0.5 text-[10px] font-black text-graphite">#{sc.id}</span>
+                        <span className="text-[11px] font-bold text-primary">{sc.time}</span>
+                      </div>
+                      <div className="mt-1 text-xs font-bold">{sc.visual}</div>
+                      <div className="mt-1 text-[11px] text-muted-foreground">旁白：{sc.voice}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </StepPanel>
 
-        {/* Step 4 */}
-        <StepPanel num="04" title="生成脚本 + 分镜静帧" hint={script ? `${script.scenes.filter((s) => s.storyboardUrl).length}/${script.scenes.length} 静帧已合成` : "未开始"}
+        {/* Step 05 · 分镜头 + 渲染 */}
+        <StepPanel
+          num="05"
+          title="分镜头 & 渲染出片"
+          hint={script ? `${script.scenes.filter((s) => s.storyboardUrl).length}/${script.scenes.length} 静帧已合成` : "等待脚本"}
           actions={
             <button
-              onClick={genScript}
-              disabled={scriptBusy || !shopId}
+              onClick={genStoryboard}
+              disabled={sbBusy || !script}
               className="inline-flex h-8 items-center gap-1.5 rounded-md bg-primary px-3 text-xs font-bold text-primary-foreground disabled:opacity-50"
             >
-              {scriptBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />}
-              {script ? "重新生成脚本" : "生成脚本"}
+              {sbBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Film className="h-3.5 w-3.5" />}
+              {script?.scenes.some((s) => s.storyboardUrl) ? "重生成分镜" : "生成分镜"}
             </button>
           }
         >
           <div className="p-4">
             {!script ? (
               <div className="rounded-md border border-dashed border-border p-8 text-center text-xs text-muted-foreground">
-                先聊立意 + 设好参数，点上面「生成脚本」。
+                先在 Step 04 生成脚本，再回这里生成分镜头静帧。
               </div>
             ) : (
               <div className="space-y-2">
-                <div className="text-sm font-black">{script.title}</div>
                 <div className="grid gap-2">
                   {script.scenes.map((sc, i) => (
                     <div key={sc.id} className="flex gap-3 rounded-md border border-border bg-card p-3">
@@ -349,21 +413,9 @@ function VideoFlow() {
                 </div>
               </div>
             )}
-          </div>
-        </StepPanel>
 
-        {/* Step 5 */}
-        <StepPanel num="05" title="渲染设置 & 提交">
-          <div className="p-4">
-            <div className="grid grid-cols-2 gap-x-6 gap-y-4">
-              <div>
-                <Label>模型</Label>
-                <select value={modelId} onChange={(e) => setModelId(e.target.value)} className="mt-1 h-9 w-full rounded-md border border-border bg-white px-2 text-sm">
-                  {MODELS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
-                </select>
-              </div>
+            <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-4 border-t border-border pt-4">
               <ChoiceRow label="分辨率" value={resolution} options={RESOLUTIONS.map((r) => ({ v: r, label: r }))} onChange={(v) => setResolution(v as any)} />
-              <ChoiceRow label="画风" value={realism} options={[{ v: "real", label: "写实" }, { v: "illustration", label: "插画" }]} onChange={(v) => setRealism(v as any)} />
               <ChoiceRow label="渲染策略" value={strategy} options={STRATEGIES.map((s) => ({ v: s.v, label: s.label }))} onChange={(v) => setStrategy(v as any)} />
             </div>
 
@@ -377,7 +429,7 @@ function VideoFlow() {
                 {job ? "已提交" : "确认生成视频"}
               </button>
               {!sbReady && (
-                <span className="text-[11px] font-bold text-amber-600">需要先生成脚本并完成所有分镜静帧</span>
+                <span className="text-[11px] font-bold text-amber-600">需要先生成分镜静帧（全部就绪）</span>
               )}
               {job && job.phase !== "done" && job.phase !== "failed" && (
                 <button onClick={failJobForDemo} className="ml-auto text-[11px] font-medium text-muted-foreground underline">
