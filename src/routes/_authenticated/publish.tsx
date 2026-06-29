@@ -665,6 +665,11 @@ function Wizard() {
                   })}
                 </div>
               </div>
+              <div className="rounded-md bg-[#fafafa] px-3 py-2 text-xs text-graphite">
+                {accounts.isLoading
+                  ? "正在统计可用账号…"
+                  : `本次将发布到 ${validAccountCount} 个有效账号（共 ${shopIds.length * platforms.length} 个 门店×平台 组合）`}
+              </div>
             </div>
             <NextBar onBack={() => setStep(1)} onNext={() => setStep(3)} canNext={shopIds.length > 0 && platforms.length > 0} />
           </Panel>
@@ -763,9 +768,10 @@ function Wizard() {
                 上一步
               </button>
               <button
-                disabled={creating}
+                disabled={creating || validAccountCount === 0}
                 onClick={handleCreate}
                 className="inline-flex h-10 items-center gap-2 rounded-md bg-primary px-4 text-sm font-bold text-primary-foreground hover:opacity-95 disabled:opacity-60"
+                title={validAccountCount === 0 ? "未发现可用账号，请先到「账号管理」绑定" : undefined}
               >
                 <Send className="h-4 w-4" /> {creating ? "创建中…" : "创建并发布"}
               </button>
