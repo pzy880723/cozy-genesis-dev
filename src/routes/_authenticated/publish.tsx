@@ -438,15 +438,28 @@ function Wizard() {
   const [step, setStep] = useState(1);
   const [selectedAssets, setSelectedAssets] = useState<string[]>([]);
   const [scope, setScope] = useState<"hq" | "store" | "multi_store">("hq");
-  const [shopIds, setShopIds] = useState<string[]>(["hq"]);
+  const [shopIds, setShopIds] = useState<string[]>([]);
   const [platforms, setPlatforms] = useState<Platform[]>(["xhs", "wechat_channels", "douyin", "kuaishou"]);
   const [copy, setCopy] = useState<GeneratedCopy | null>(null);
   const [generating, setGenerating] = useState(false);
   const [creating, setCreating] = useState(false);
-  const [created, setCreated] = useState(false);
+  const [createdJobId, setCreatedJobId] = useState<string | null>(null);
+  const qc = useQueryClient();
 
   const shops = useQuery({ queryKey: ["shops"], queryFn: () => shopsApi.list() });
   const assets = useQuery({ queryKey: ["assets"], queryFn: () => assetsApi.list() });
+  const accounts = useQuery({
+    queryKey: ["accounts", shopIds, platforms],
+    queryFn: () => accountsApi.list({ shopIds, platforms }),
+    enabled: shopIds.length > 0 && platforms.length > 0,
+  });
+
+  // 拉到门店后默认选第一个
+  useEffect(() => {
+    if (!shopIds.length && shops.data && shops.data.length > 0) {
+      setShopIds([shops.data[0].id]);
+    }
+  }, [shops.data]);
 
   const toggleAsset = (id: string) =>
     setSelectedAssets((arr) => (arr.includes(id) ? arr.filter((x) => x !== id) : [...arr, id]));
@@ -467,7 +480,7 @@ function Wizard() {
   const handleCreate = async () => {
     setCreating(true);
     try {
-      await publishApi.create({
+      const result = await publishApi.create({
         title: copy?.title ?? "新发布任务",
         scopeType: scope,
         shopIds,
@@ -476,7 +489,14 @@ function Wizard() {
         assetIds: selectedAssets,
         copy: copy ? { title: copy.title, body: copy.body, tags: copy.tags } : undefined,
       });
-      setCreated(true);
+      setCreatedJobId(result.jobId);
+      qc.invalidateQueries({ queryKey: ["publish-jobs"] });
+      const missingMsg = result.missing.length
+        ? `；${result.missing.length} 个 (门店×平台) 无可用账号`
+        : "";
+      toast.success(`已创建，${result.targetCount} 个目标已排队${missingMsg}`);
+    } catch (e: any) {
+      toast.error("创建失败：" + (e?.message ?? "未知错误"));
     } finally {
       setCreating(false);
     }
@@ -489,7 +509,12 @@ function Wizard() {
     { n: 4, label: "创建任务" },
   ];
 
-  if (created) {
+  const validAccountCount = useMemo(
+    () => (accounts.data ?? []).filter((a) => a.status === "valid").length,
+    [accounts.data],
+  );
+
+  if (createdJobId) {
     return (
       <Panel>
         <div className="flex flex-col items-center px-6 py-16 text-center">
@@ -503,7 +528,7 @@ function Wizard() {
           <div className="mt-5 flex gap-2">
             <button
               onClick={() => {
-                setCreated(false);
+                setCreatedJobId(null);
                 setStep(1);
                 setSelectedAssets([]);
                 setCopy(null);
