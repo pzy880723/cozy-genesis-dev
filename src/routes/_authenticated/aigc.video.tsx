@@ -176,7 +176,7 @@ function VideoFlow() {
         className="mb-3 flex items-center gap-2 rounded-md border border-amber-300/70 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800 hover:bg-amber-100"
       >
         <Sparkles className="h-3.5 w-3.5" />
-        想更快？试试「部门帮我拍 · 一键出片」 →
+        想更快？试试「BOOMER 帮我拍 · 一键出片」 →
       </Link>
 
       <div className="space-y-4">
