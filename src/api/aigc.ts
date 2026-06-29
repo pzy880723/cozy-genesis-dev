@@ -67,7 +67,7 @@ export const ONECLICK_MAX_REFS = 9;
 
 export type OneClickPickInput = {
   shopId: string;
-  types: OneClickVideoType[];
+  type: OneClickVideoType;
   category: string;
   max?: number;
 };
@@ -79,7 +79,7 @@ export type OneClickPickResult = {
 
 export type OneClickGenerateInput = {
   shopId: string;
-  types: OneClickVideoType[];
+  type: OneClickVideoType;
   category: string;
   assetIds: string[];
   aspect: string;
@@ -87,21 +87,19 @@ export type OneClickGenerateInput = {
 };
 
 const TYPE_TAG_HINTS: Record<OneClickVideoType, string[]> = {
-  store_tour: ["探店", "门店", "门头", "环境"],
-  new_arrival: ["新品", "上新", "上架", "新款"],
-  store_ambience: ["氛围", "环境", "灯光", "空镜"],
-  brand_intro: ["品牌", "IP", "主视觉"],
-  activity: ["活动", "海报", "周末", "促销"],
-  customer_review: ["顾客", "试穿", "好评", "评价"],
+  store_tour: ["门头", "招牌", "入口", "BOOMER", "货架", "翻筐", "陈列", "店内"],
+  product_showcase: ["正面", "细节", "微距", "上身", "在手", "产品"],
+  store_ambience: ["氛围", "暖光", "霓虹", "空镜", "灯光"],
+  new_arrival: ["新到", "新品", "标签", "多角度", "上架"],
 };
 
-function scoreAsset(a: Asset, types: OneClickVideoType[], category: string): number {
+const STORE_FRONT_HINTS = ["门头", "招牌", "入口", "boomer"];
+
+function scoreAsset(a: Asset, type: OneClickVideoType, category: string): number {
   const tagText = [a.title, ...(a.tags ?? []), a.category ?? ""].join(" ").toLowerCase();
   let s = 0;
-  for (const t of types) {
-    for (const hint of TYPE_TAG_HINTS[t]) {
-      if (tagText.includes(hint.toLowerCase())) s += 3;
-    }
+  for (const hint of TYPE_TAG_HINTS[type]) {
+    if (tagText.includes(hint.toLowerCase())) s += 3;
   }
   if (category && category !== ALL_CATEGORY) {
     if (tagText.includes(category.toLowerCase())) s += 4;
@@ -109,6 +107,11 @@ function scoreAsset(a: Asset, types: OneClickVideoType[], category: string): num
   // 偏好有缩略图的
   if (a.thumbnailUrl) s += 1;
   return s;
+}
+
+function isStorefront(a: Asset): boolean {
+  const txt = [a.title, ...(a.tags ?? []), a.category ?? ""].join(" ").toLowerCase();
+  return STORE_FRONT_HINTS.some((h) => txt.includes(h.toLowerCase()));
 }
 
 export const aigcApi = {
@@ -237,15 +240,34 @@ export const aigcApi = {
       limit: 120,
     });
     const scored = all
-      .map((a) => ({ a, s: scoreAsset(a, input.types, input.category) }))
+      .map((a) => ({ a, s: scoreAsset(a, input.type, input.category) }))
       // 让没匹配到 tag 的也能进来（保证有图），匹配的优先
       .sort((x, y) => y.s - x.s);
-    const picked = scored.slice(0, max).map((x) => x.a);
+    let picked = scored.slice(0, max).map((x) => x.a);
+
+    // 探店类：门头图强制置首，命中不到则提示补拍
+    let frontHint: string | undefined;
+    if (input.type === "store_tour") {
+      const frontIdx = picked.findIndex(isStorefront);
+      if (frontIdx > 0) {
+        const [front] = picked.splice(frontIdx, 1);
+        picked = [front, ...picked];
+      } else if (frontIdx === -1) {
+        // 在池内找一张门头补进首位
+        const extra = scored.map((x) => x.a).find((a) => !picked.includes(a) && isStorefront(a));
+        if (extra) {
+          picked = [extra, ...picked].slice(0, max);
+        } else {
+          frontHint = "未找到门头/招牌图，建议补拍门头后再生成（探店类首镜必须是门头）。";
+        }
+      }
+    }
+
     const shortage =
       picked.length < max
         ? `仅找到 ${picked.length} 张上传图，可继续生成，或先去素材库上传更多基础图。`
         : undefined;
-    return mock({ assets: picked, shortage }, 500);
+    return mock({ assets: picked, shortage: frontHint ?? shortage }, 500);
   },
 
   // 一键生成：脚本 → 分镜 → 渲染任务，全部串起来。
@@ -253,18 +275,17 @@ export const aigcApi = {
     input: OneClickGenerateInput,
   ): Promise<{ jobId: string; script: Script; brief: VideoBrief }> => {
     const profile = getBrandProfile(input.shopId);
-    const highlight = brandHighlight(profile, input.types, input.category);
-    const primaryType = input.types[0] ?? "store_tour";
+    const highlight = brandHighlight(profile, input.type, input.category);
     const brief: VideoBrief = {
       shopId: input.shopId,
       refAssetIds: input.assetIds,
       character: null,
-      vtype: primaryType,
+      vtype: input.type,
       style: "lively",
       duration: 15,
       aspect: input.aspect,
       highlight,
-      briefDigest: `一键出片 · ${profile.brandName} · ${input.types.join("+")} · ${input.category}`,
+      briefDigest: `BOOMER 帮我拍 · ${profile.brandName} · ${input.type} · ${input.category}`,
     };
     const script = await aigcApi.generateVideoScript(brief);
     const sb = await aigcApi.generateStoryboard({ scenes: script.scenes });

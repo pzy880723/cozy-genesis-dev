@@ -25,7 +25,7 @@ import {
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/aigc/oneclick")({
-  head: () => ({ meta: [{ title: "部门帮我拍 · 一键出片" }] }),
+  head: () => ({ meta: [{ title: "BOOMER 帮我拍 · 一键出片" }] }),
   component: OneClickPage,
 });
 
@@ -48,7 +48,7 @@ function OneClickPage() {
   const profile = useMemo(() => getBrandProfile(shopId), [shopId]);
   const [introExpanded, setIntroExpanded] = useState(false);
 
-  const [types, setTypes] = useState<OneClickVideoType[]>(["store_tour"]);
+  const [type, setType] = useState<OneClickVideoType>("store_tour");
   const [category, setCategory] = useState<string>(ALL_CATEGORY);
 
   // 切换店铺：品类选项变化，重置为店铺主营或全品类
@@ -90,12 +90,11 @@ function OneClickPage() {
 
   const autoPick = async () => {
     if (!shopId) return;
-    if (types.length === 0) return;
     setPickBusy(true);
     setPickShortage(undefined);
     try {
       const r = await aigcApi.pickAutoAssets({
-        shopId, types, category, max: ONECLICK_MAX_REFS,
+        shopId, type, category, max: ONECLICK_MAX_REFS,
       });
       setPicked(r.assets);
       setPickShortage(r.shortage);
@@ -104,7 +103,7 @@ function OneClickPage() {
 
   const removePicked = (id: string) => setPicked((arr) => arr.filter((a) => a.id !== id));
 
-  const canGenerate = shopId && types.length > 0 && picked.length > 0 && phase === "idle";
+  const canGenerate = shopId && picked.length > 0 && phase === "idle";
 
   const generate = async () => {
     if (!canGenerate) return;
@@ -116,7 +115,7 @@ function OneClickPage() {
       await new Promise((r) => setTimeout(r, 600));
       setPhase("designing");
       const res = await aigcApi.oneClickGenerate({
-        shopId, types, category, assetIds: picked.map((a) => a.id), aspect, modelId,
+        shopId, type, category, assetIds: picked.map((a) => a.id), aspect, modelId,
       });
       setScript(res.script);
       setJob({
@@ -141,8 +140,8 @@ function OneClickPage() {
   return (
     <AppShell>
       <PageHeader
-        title="部门帮我拍 · 一键出片"
-        description="选店铺 → 勾类型 → 一键 15 秒成片，脚本、角色都交给 AI"
+        title="BOOMER 帮我拍 · 一键出片"
+        description="选店铺 → 选类型 → 一键 15 秒成片，脚本、角色都按 BOOMER·OFF 品牌铁律生成"
         actions={
           <Link to="/aigc" className="inline-flex h-9 items-center gap-1.5 rounded-md border border-border bg-white px-3 text-xs font-bold text-graphite hover:bg-secondary">
             <ArrowLeft className="h-3.5 w-3.5" /> 返回创作中心
@@ -202,16 +201,16 @@ function OneClickPage() {
           </div>
         </Panel>
 
-        {/* 02 视频类型（多选） */}
-        <Panel title="02 · 视频类型" hint={`多选 · 已选 ${types.length} 项`}>
+        {/* 02 视频类型（单选） */}
+        <Panel title="02 · 视频类型" hint="单选 · 对齐品牌四类必做">
           <div className="p-4">
             <div className="flex flex-wrap gap-2">
               {ONECLICK_VIDEO_TYPES.map((t) => {
-                const on = types.includes(t.v);
+                const on = type === t.v;
                 return (
                   <button
                     key={t.v}
-                    onClick={() => setTypes((arr) => on ? arr.filter((x) => x !== t.v) : [...arr, t.v])}
+                    onClick={() => setType(t.v)}
                     className={cn(
                       "rounded-md border px-3 py-1.5 text-xs font-bold",
                       on ? "border-primary bg-primary-soft text-primary" : "border-border bg-white text-graphite hover:bg-secondary",
@@ -223,9 +222,9 @@ function OneClickPage() {
                 );
               })}
             </div>
-            {types.length === 0 && (
-              <p className="mt-2 text-[11px] font-bold text-amber-600">至少勾一个视频类型</p>
-            )}
+            <p className="mt-2 text-[11px] font-medium text-muted-foreground">
+              探店为主推；产品展示 / 店铺氛围 / 新品上架按需选择。
+            </p>
           </div>
         </Panel>
 
@@ -257,7 +256,7 @@ function OneClickPage() {
           actions={
             <button
               onClick={autoPick}
-              disabled={pickBusy || !shopId || types.length === 0}
+              disabled={pickBusy || !shopId}
               className="inline-flex h-8 items-center gap-1.5 rounded-md bg-primary px-3 text-xs font-bold text-primary-foreground disabled:opacity-50"
             >
               {pickBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />}

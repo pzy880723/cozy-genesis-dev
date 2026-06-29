@@ -1,121 +1,144 @@
-# 部门帮我拍 · 一键生成 15s 视频
 
-在「AI 创作中心」加入口「部门帮我拍 · 一键出片」：用户只勾几下 → 自动选图 → AI 写脚本+设计角色 → 直出 15 秒成片。
+# BOOMER 帮我拍 · 全局修改方案
 
-## 入口与位置
+读完 `BOOMER-OFF-品牌完整介绍.md` 后做的三件事：
+1. 把「部门帮我拍」全部改名「BOOMER 帮我拍」
+2. 视频类型由多选改单选
+3. 倾向品类按品牌文档第十二节铺齐，并把品牌资料、铁律、视觉风格、必拍镜头沉淀进系统，作为 AI 一键出片的"设计依据"
 
-- `src/routes/_authenticated/aigc.index.tsx`：在「AI 短视频」旁加高亮卡片 **部门帮我拍**，副标题「一键自动选图 + 自动脚本 + 直出 15s」。
-- 新路由：`src/routes/_authenticated/aigc.oneclick.tsx`（`/aigc/oneclick`）。
-- `/aigc/video` 顶部加一条「想更快？试试一键出片 →」浅色提示条。
+---
 
-## 品牌资料（设计依据，新增）
+## 一、命名与入口
 
-视频脚本、画面调性、角色形象都基于「店铺品牌资料」生成，因此先在 Shop 上加几个后台字段，作为 AI 一键出片的素材：
+- 入口卡（`aigc.index.tsx`）：标题 **BOOMER 帮我拍**，副标题「选店铺 → 选类型 → 一键 15 秒成片，脚本、角色都按 BOOMER·OFF 品牌铁律生成」
+- `/aigc/video` 顶部提示条：「想更快？试试 BOOMER 帮我拍 →」
+- `aigc.oneclick.tsx` 页头标题、面包屑、按钮文案全部替换为「BOOMER 帮我拍」
+- 提交按钮文案：`✨ 一键生成 15s 成片`
 
-`src/types/index.ts` Shop 新增可选字段：
-- `brandName`：品牌名（如「瓷器天堂」）
-- `brandIntro`：品牌介绍（长文本，1–3 段）
-- `brandTone`：品牌语调（如「沉稳 / 国风 / 治愈」）
-- `categories: string[]`：在售品类标签池（如 `["瓷器","茶具","香器"]`）
-- `primaryCategory?: string`：主营品类（默认探店倾向）
+> 路由路径仍保留 `/aigc/oneclick`（仅展示文案变更，避免改路由/外链）。
 
-`src/api/shops.ts` + `src/mocks/data.ts`：补两家示例店铺的 brand 资料；`/settings` 页面顺手露一个「品牌资料」编辑卡（最小可用 textarea + 标签输入），让后台能改。
+---
 
-> 一键出片调 `generateVideoScript` 时，把 `brandIntro / brandTone / 选中类型 / 倾向品类` 拼到 `highlight`（VideoBrief 已有该字段），不改接口签名。
+## 二、视频类型：多选 → 单选
 
-## 页面流程
+`src/api/brand.ts` 的 `ONECLICK_VIDEO_TYPES` 收敛到品牌文档第十节"四类必做"，与脚本生成 vtype 对齐：
 
-```
-┌── 01 归属店铺 ─────────────────────────────┐
-│ 门店下拉 + 品牌资料预览卡（只读）           │
-│   品牌名｜语调标签｜介绍前两行 [展开]       │
-│   底部小字：「AI 会按品牌资料设计画面与角色」│
-└────────────────────────────────────────────┘
-
-┌── 02 视频类型（多选，至少 1）────────────────┐
-│ ☐ 探店       ☐ 上新       ☐ 环境           │
-│ ☐ 品牌介绍   ☐ 活动       ☐ 顾客好评       │
-│ （都是大类型，不含细分品类）                │
-└────────────────────────────────────────────┘
-
-┌── 03 倾向品类（单选，来自店铺 categories）──┐
-│ ⦿ 全品类  ○ 瓷器  ○ 玩具  ○ 黑胶          │
-│ ○ 数码    ○ 玩偶（动态来自店铺 categories）│
-│ 默认值：店铺 primaryCategory，否则「全品类」 │
-└────────────────────────────────────────────┘
-
-┌── 04 自动选图（最多 9 张）──────────────────┐
-│ [ 一键自动挑图 ]                            │
-│ 规则：source='upload'（排除 AI 生成）        │
-│      shop = 当前店铺                        │
-│      按 视频类型 + 倾向品类 给标签打分 Top 9│
-│ 选好后展示 9 格缩略图 + 单张「替换 / 删除」  │
-│ 「再来一组」可换批                          │
-└────────────────────────────────────────────┘
-
-┌── 05 生成设置 ─────────────────────────────┐
-│ 时长：15s（固定，「CDS 单段上限」）          │
-│ 模型：⦿ Fast（默认）  ○ PRO                │
-│ 画幅：⦿ 9:16  ○ 1:1  ○ 16:9                │
-│ [ ✨ 一键生成 ]                              │
-└────────────────────────────────────────────┘
-
-┌── 结果面板 ───────────────────────────────┐
-│ ① AI 编剧中（基于品牌资料）                 │
-│ ② AI 设计角色形象                           │
-│ ③ 镜头渲染中（进度条）                      │
-│ ✅ 出片完成 → <video> 预览 + 下载 + 去发布  │
-│ 失败 → 降到 Fast / 换一组图 / 重试          │
-└────────────────────────────────────────────┘
+```text
+⦿ 探店 store_tour          ← 主推，默认
+○ 产品展示 product_showcase
+○ 店铺氛围 store_ambience
+○ 新品上架 new_arrival
 ```
 
-## 文案
+- 组件用 `RadioGroup`，state 由 `OneClickVideoType[]` 改为 `OneClickVideoType`
+- 至少 1 个的校验逻辑删除（单选必有值，默认 `store_tour`）
+- `pickAutoAssets` / `oneClickGenerate` / `brandHighlight` 入参 `types: OneClickVideoType[]` 改为 `type: OneClickVideoType`
+- `TYPE_TAG_HINTS` 同步加上 `product_showcase` 关键词（正面/细节/微距/上身）
 
-- **入口卡标题**：部门帮我拍
-- **入口卡副标题**：选店铺 → 勾类型 → 一键 15 秒成片，脚本、角色都交给 AI
-- **品牌资料卡说明**：AI 会按这份品牌资料设计画面、旁白与角色
-- **一键挑图按钮**：一键自动挑图（最多 9 张）
-- **挑图说明**：仅从「上传素材」中挑选，不含 AI 生成图
-- **类型未选**：至少勾一个视频类型
-- **提交按钮**：✨ 一键生成 15s 视频
-- **阶段标题**：① AI 编剧 → ② 设计角色 → ③ 镜头渲染 → ✅ 完成
-- **结果操作**：下载 MP4 / 去发布中心 / 重新生成
+---
 
-## 数据 & 接口
+## 三、倾向品类：按品牌文档第十二节铺齐
 
-`src/types/index.ts`：Shop 增 `brandName / brandIntro / brandTone / categories / primaryCategory`。
+文档第十二节列出 7 大类，作为全店通用的「品类池」，店铺 `categories` 是其子集。
 
-`src/api/aigc.ts`：
-- `pickAutoAssets({ shopId, types, category, max:9 })` → `{ assets, reason[] }`，硬过滤 `source==='upload'`，按 `types + category` 与 asset `tags/category` 加权排序取前 9。
-- `oneClickGenerate({ shopId, types, category, assetIds, aspect, modelId })`：内部串 `generateVideoScript`（duration 写死 15，type 取首个，highlight 自动拼「品牌介绍 + 语调 + 多选类型 + 倾向品类」）→ `generateStoryboard` → `submitRenderJob`（duration 15、strategy `one_shot`、resolution `720p`）。返回 `{ jobId, script }`，前端复用 `pollRenderJob`。
+`brand.ts` 新增常量：
 
-`src/mocks/data.ts`：
-- 两家示例店铺补 brand 资料（「瓷器天堂」: tone 国风沉稳, categories 瓷器/茶具/香器；「玩具天堂」: tone 治愈俏皮, categories 玩偶/黑胶/数码）。
-- 给现有 image asset 补 `source:'upload'` 与若干 `category`/`tags`，确保打分有结果。
+```text
+BOOMER_CATEGORY_POOL = [
+  "全品类",
+  "日本中古瓷器",
+  "趣味玩具",
+  "IP 玩偶",
+  "黑胶唱片",
+  "中古数码",
+  "中古杂货",
+  "欧洲中古小物",
+]
+```
 
-## 关键约束
+UI（Step 03）：
+- 来源 = 当前店铺 `categories` ∪ `BOOMER_CATEGORY_POOL`，加「全品类」置首
+- 单选 chip，默认值：店铺 `primaryCategory`，否则「全品类」
+- 文案：「想偏向哪一类？AI 会优先取该品类的素材并往脚本里带。」
 
-- 选图来源 **必须** `source==='upload'`；不足 9 张时按现有数量并提示「仅 N 张，可继续或去上传更多」。
-- 视频类型只暴露大类型（探店 / 上新 / 环境 / 品牌介绍 / 活动 / 顾客好评），不出现「瓷器介绍」「玩具介绍」这类细分。
-- 倾向品类单选，选项来自当前店铺 `categories` + 「全品类」。
-- 时长 15s 固定；策略 `one_shot` 固定。
-- 模型默认 Fast；可切 PRO。
+---
 
-## 改动清单
+## 四、品牌资料对齐 BOOMER·OFF（删掉"瓷器天堂/玩具天堂"假数据）
 
-- 新增：`src/routes/_authenticated/aigc.oneclick.tsx`
-- 修改：`src/routes/_authenticated/aigc.index.tsx`（入口卡）
-- 修改：`src/routes/_authenticated/aigc.video.tsx`（跳转提示条）
-- 修改：`src/routes/_authenticated/settings.tsx`（最小品牌资料编辑卡）
-- 修改：`src/api/aigc.ts`（`pickAutoAssets` / `oneClickGenerate`）
-- 修改：`src/api/shops.ts`（保存/读取品牌资料）
-- 修改：`src/types/index.ts`、`src/mocks/data.ts`
+`brand.ts` 的 `PROFILES` 重写为品牌文档里真实存在的店铺：
 
-## 验收
+| shopId | brandName | brandIntro 摘要 | brandTone | categories | primaryCategory |
+| --- | --- | --- | --- | --- | --- |
+| `shop_zxth` | BOOMER·OFF · 上海中信泰富店 | 南京西路 B1 旗舰，无门面通透铺位，日欧中古杂货寻宝乐园，6.9 元起 | 克制 · 有质感 · 像随手记 | 日本中古瓷器 / 趣味玩具 / IP 玩偶 / 黑胶唱片 / 中古数码 / 中古杂货 / 欧洲中古小物 | 日本中古瓷器 |
+| `shop_mh728` | BOOMER·OFF · 闵行 728 总部 | 总部及货品中转中心（非零售），用于内容/培训素材 | 克制 · 内部 | 全品类 | — |
+| `hq` | BOOMER·OFF（总部） | 国内首家标准化中古连锁，30,000+ SKU、6.9 元起、平价中古杂货铺 | 克制 · 有质感 · 像随手记 | 全品类 | — |
 
-1. 入口可见；切换店铺时品牌资料卡同步刷新。
-2. 视频类型仅大类型；倾向品类来自店铺 categories。
-3. 自动挑图仅「上传」图，最多 9 张，可重挑。
-4. 一键生成后 4 阶段进度可见，结束播放 15s 视频。
-5. 模型默认 Fast，切 PRO 立刻生效。
-6. `/settings` 可编辑品牌资料并立即影响一键出片结果。
+> 删除原 mock 里的 `南京新街口` `静安店` 与潮牌口径，以及 `瓷器天堂` / `玩具天堂` 这两条与品牌不符的资料。
+
+`brandHighlight()` 在原拼装基础上**注入品牌铁律**，让脚本生成端默认守规：
+
+```text
+【品牌】BOOMER·OFF（标准化中古连锁）
+【语调】克制、有质感、像随手记
+【品牌介绍】… (来自 brandIntro)
+【本片类型】探店
+【倾向品类】日本中古瓷器
+【内容铁律】100% 简体中文；不编造价格/年代/产地/品牌/材质；
+  禁词：主播/直播间/保真/秒杀/全网最低/拍卖行级别/独家供应商；
+  称呼：你 / 您 / 店员；不用"宝宝们/家人们"；不喊话、不带货式叫卖。
+【视觉风格】真人写实纪实风；暖光/电影级三点布光；中焦+微距；胶片颗粒。
+【硬约束】商场内门店，无门框、无户外；探店类首镜必须是门头。
+```
+
+---
+
+## 五、自动选图规则细化
+
+`pickAutoAssets`：
+- 维持 `source==='upload'` 硬过滤、最多 9 张
+- 探店类（`store_tour`）首位强制塞「门头/招牌/门店入口」标签的图（命中 `门头/招牌/入口/BOOMER` 关键字），与文档"门头必为第一镜"对齐；命中不到则面板顶部出现提示「未找到门头图，建议补拍后再生成」
+- `TYPE_TAG_HINTS` 调整为品牌词：探店→门头/货架/翻筐/陈列；产品展示→正面/细节/微距；店铺氛围→暖光/霓虹/空镜；新品上架→新到/标签/多角度
+
+---
+
+## 六、设置区与文案
+
+- 模型：⦿ Fast（默认） ○ PRO
+- 画幅：⦿ 9:16  ○ 1:1  ○ 16:9（默认 9:16，对齐抖音/小红书/视频号主流量）
+- 时长：固定 15s（保留说明「CDS 单段上限」）
+- 顶部展示「品牌资料预览卡」：brandName / brandTone / brandIntro 前两行 [展开]，底部小字：「AI 会按 BOOMER·OFF 品牌铁律设计画面、旁白与角色」
+
+---
+
+## 七、改动清单
+
+- 修改：`src/api/brand.ts`
+  - `ONECLICK_VIDEO_TYPES` 改为 4 项；新增 `BOOMER_CATEGORY_POOL`
+  - `OneClickVideoType` 单值化；`brandHighlight(profile, type, category)` 签名调整 + 注入铁律段
+  - `PROFILES` 按 BOOMER·OFF 真实门店重写，删除瓷器/玩具天堂
+  - 新增 `buildCategoryOptions(profile)` = 池 ∪ 店铺 categories，去重置「全品类」置首
+- 修改：`src/api/aigc.ts`
+  - `OneClickPickInput.types` → `type`；`OneClickGenerateInput.types` → `type`
+  - `pickAutoAssets`：单类型评分 + 门头优先
+  - `oneClickGenerate`：briefDigest/highlight 用单类型
+  - `TYPE_TAG_HINTS` 关键词替换
+- 修改：`src/routes/_authenticated/aigc.oneclick.tsx`
+  - 全文案改「BOOMER 帮我拍」
+  - Step 02 改 `RadioGroup` 单选
+  - Step 03 用 `buildCategoryOptions`
+  - 移除多选校验
+- 修改：`src/routes/_authenticated/aigc.index.tsx`：入口卡标题/副标题/icon
+- 修改：`src/routes/_authenticated/aigc.video.tsx`：顶部提示条改名
+
+> 不动：路由路径、`generateVideoScript` 接口签名、`pollRenderJob`、UI 组件库。
+
+---
+
+## 八、验收
+
+1. 入口卡显示「BOOMER 帮我拍」，旧"部门帮我拍"全站搜索 0 命中
+2. 视频类型为 4 选 1 单选，默认「探店」
+3. 倾向品类下拉包含 BOOMER 7 大类 + 「全品类」+ 店铺自有 categories（去重）
+4. 切换到「上海中信泰富店」时品牌资料卡显示真实 BOOMER·OFF 文案
+5. 探店类一键挑图后，第一张是门头/招牌图；没有时顶部出现补拍提示
+6. 生成出的脚本旁白不含禁词（主播 / 宝宝们 / 全网最低 / 秒杀 …），首镜为门头
