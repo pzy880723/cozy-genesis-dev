@@ -823,11 +823,19 @@ function NextBar({ onBack, onNext, canNext }: { onBack?: () => void; onNext: () 
 }
 
 function JobList({ filter }: { filter: "running" | "history" }) {
-  const jobs = useQuery({ queryKey: ["publish-jobs"], queryFn: () => publishApi.list() });
+  const jobs = useQuery({
+    queryKey: ["publish-jobs"],
+    queryFn: () => publishApi.list(),
+    refetchInterval: 5000,
+  });
+  const [detailJobId, setDetailJobId] = useState<string | null>(null);
   const data = (jobs.data ?? []).filter((j) =>
-    filter === "running" ? j.status === "running" || j.status === "queued" : true,
+    filter === "running"
+      ? j.status === "running" || j.status === "queued" || (j.status as string) === "pending"
+      : true,
   );
   return (
+    <>
     <Panel title={filter === "running" ? "进行中的发布" : "全部发布记录"} hint={`共 ${data.length} 条`}>
       <table className="w-full border-collapse text-sm">
         <thead>
@@ -847,22 +855,173 @@ function JobList({ filter }: { filter: "running" | "history" }) {
               <td className="h-12 px-4 text-graphite">{j.shopNames?.join("、")}</td>
               <td className="h-12 px-4">
                 <div className="flex flex-wrap gap-1">
+                  {j.targets.length === 0 && <span className="text-xs text-muted-foreground">—</span>}
                   {j.targets.map((t) => (
                     <PlatformBadge key={t.id} platform={t.platform} />
                   ))}
                 </div>
               </td>
-              <td className="h-12 px-4 text-muted-foreground">{j.scheduledAt}</td>
+              <td className="h-12 px-4 text-muted-foreground">{j.scheduledAt ?? "立即"}</td>
               <td className="h-12 px-4">
                 <StatusBadge tone={jobStatusTone(j.status)}>{jobStatusLabel(j.status)}</StatusBadge>
               </td>
               <td className="h-12 px-4">
-                <button className="text-xs font-bold text-primary hover:underline">查看详情</button>
+                <button
+                  onClick={() => setDetailJobId(j.id)}
+                  className="text-xs font-bold text-primary hover:underline"
+                >
+                  查看详情
+                </button>
               </td>
             </tr>
           ))}
+          {data.length === 0 && (
+            <tr>
+              <td colSpan={6}>
+                <div className="px-6 py-12 text-center text-xs text-muted-foreground">
+                  {jobs.isLoading ? "加载中…" : "暂无任务"}
+                </div>
+              </td>
+            </tr>
+          )}
         </tbody>
       </table>
     </Panel>
+    {detailJobId && (
+      <JobDetailDrawer jobId={detailJobId} onClose={() => setDetailJobId(null)} />
+    )}
+    </>
+  );
+}
+
+function JobDetailDrawer({ jobId, onClose }: { jobId: string; onClose: () => void }) {
+  const qc = useQueryClient();
+  const job = useQuery({
+    queryKey: ["publish-job", jobId],
+    queryFn: () => publishApi.detail(jobId),
+    refetchInterval: 4000,
+  });
+  const data: PublishJob | null | undefined = job.data;
+
+  const refresh = () => {
+    qc.invalidateQueries({ queryKey: ["publish-job", jobId] });
+    qc.invalidateQueries({ queryKey: ["publish-jobs"] });
+  };
+
+  const onRetry = async (targetId: string) => {
+    try {
+      await publishApi.retryTarget(targetId);
+      toast.success("已重新排队");
+      refresh();
+    } catch (e: any) {
+      toast.error("重试失败：" + (e?.message ?? ""));
+    }
+  };
+
+  const onCancel = async () => {
+    if (!confirm("确定取消整个任务？未完成的目标将一并置为已取消。")) return;
+    try {
+      await publishApi.cancel(jobId);
+      toast.success("任务已取消");
+      refresh();
+    } catch (e: any) {
+      toast.error("取消失败：" + (e?.message ?? ""));
+    }
+  };
+
+  const cancellable =
+    data && data.status !== "success" && data.status !== "cancelled" && data.status !== "failed";
+
+  return (
+    <div className="fixed inset-0 z-50 flex">
+      <div className="flex-1 bg-black/30" onClick={onClose} />
+      <aside className="flex h-full w-[560px] flex-col border-l border-border bg-white">
+        <header className="flex h-14 items-center justify-between border-b border-border px-5">
+          <div className="min-w-0">
+            <strong className="block truncate text-base font-black">
+              {data?.title ?? "任务详情"}
+            </strong>
+            <div className="mt-0.5 text-[11px] text-muted-foreground">
+              {data ? `${data.shopNames?.join("、")} · ${data.createdAt?.slice(0, 16).replace("T", " ")}` : ""}
+            </div>
+          </div>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
+            <X className="h-4 w-4" />
+          </button>
+        </header>
+        <div className="flex items-center justify-between border-b border-border bg-[#fafafa] px-5 py-3 text-xs">
+          <div className="flex items-center gap-2">
+            <span className="text-graphite">状态</span>
+            {data && (
+              <StatusBadge tone={jobStatusTone(data.status)}>{jobStatusLabel(data.status)}</StatusBadge>
+            )}
+            {data && <span className="text-muted-foreground">· {data.targets.length} 个目标</span>}
+          </div>
+          <div className="flex items-center gap-1.5">
+            <button onClick={refresh} className="inline-flex h-7 items-center gap-1 rounded border border-border bg-white px-2 text-[11px] font-bold text-graphite hover:bg-secondary">
+              <RefreshCw className="h-3 w-3" /> 刷新
+            </button>
+            {cancellable && (
+              <button onClick={onCancel} className="inline-flex h-7 items-center gap-1 rounded border border-destructive/30 bg-white px-2 text-[11px] font-bold text-destructive hover:bg-primary-soft">
+                取消整个任务
+              </button>
+            )}
+          </div>
+        </div>
+        <div className="flex-1 overflow-auto">
+          {!data && (
+            <div className="px-6 py-12 text-center text-xs text-muted-foreground">
+              {job.isLoading ? "加载中…" : "未找到任务"}
+            </div>
+          )}
+          {data && (
+            <table className="w-full border-collapse text-sm">
+              <thead>
+                <tr className="bg-white text-left text-xs text-muted-foreground">
+                  <th className="h-10 px-5 font-semibold">账号</th>
+                  <th className="h-10 px-3 font-semibold">平台</th>
+                  <th className="h-10 px-3 font-semibold">状态</th>
+                  <th className="h-10 px-3 font-semibold">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.targets.map((t) => (
+                  <tr key={t.id} className="border-t border-[#f0f0f1] align-top">
+                    <td className="px-5 py-3">
+                      <div className="text-sm font-bold">{t.accountName}</div>
+                      {t.errorMessage && (
+                        <div className="mt-1 text-[11px] text-destructive">{t.errorMessage}</div>
+                      )}
+                      {t.publishedUrl && (
+                        <a href={t.publishedUrl} target="_blank" rel="noreferrer" className="mt-1 block text-[11px] text-primary hover:underline">
+                          查看已发布内容 ↗
+                        </a>
+                      )}
+                    </td>
+                    <td className="px-3 py-3"><PlatformBadge platform={t.platform} /></td>
+                    <td className="px-3 py-3">
+                      <StatusBadge tone={jobStatusTone(t.status)}>{jobStatusLabel(t.status)}</StatusBadge>
+                    </td>
+                    <td className="px-3 py-3">
+                      {t.status === "failed" && (
+                        <button
+                          onClick={() => onRetry(t.id)}
+                          className="inline-flex h-7 items-center gap-1 rounded border border-border bg-white px-2 text-[11px] font-bold text-graphite hover:bg-secondary"
+                        >
+                          <RefreshCw className="h-3 w-3" /> 重试
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+                {data.targets.length === 0 && (
+                  <tr><td colSpan={4} className="px-5 py-10 text-center text-xs text-muted-foreground">该任务暂无目标（可能创建时无可用账号）</td></tr>
+                )}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </aside>
+    </div>
   );
 }
