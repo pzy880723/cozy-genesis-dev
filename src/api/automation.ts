@@ -129,6 +129,7 @@ export const automationApi = {
         body: t.content_strategy ?? "",
         tags: [],
       },
+      automationTaskId: t.id,
     });
     await supabase
       .from("automation_tasks" as any)
