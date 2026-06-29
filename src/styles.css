@@ -170,10 +170,10 @@
     border-color: var(--color-border);
   }
 
-  body {
+  html, body {
     background-color: var(--color-background);
     color: var(--color-foreground);
-    font-family: var(--font-sans);
+    font-family: "Fira Sans", ui-sans-serif, system-ui, sans-serif;
     font-feature-settings: "cv11", "ss01", "tnum";
   }
 
