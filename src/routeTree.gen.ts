@@ -14,7 +14,6 @@ import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as AuthenticatedPublishRouteImport } from './routes/_authenticated/publish'
-import { Route as AuthenticatedAutomationRouteImport } from './routes/_authenticated/automation'
 import { Route as AuthenticatedAssetsRouteImport } from './routes/_authenticated/assets'
 import { Route as AuthenticatedAccountsRouteImport } from './routes/_authenticated/accounts'
 import { Route as AuthenticatedAigcIndexRouteImport } from './routes/_authenticated/aigc.index'
@@ -44,11 +43,6 @@ const AuthenticatedSettingsRoute = AuthenticatedSettingsRouteImport.update({
 const AuthenticatedPublishRoute = AuthenticatedPublishRouteImport.update({
   id: '/publish',
   path: '/publish',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any)
-const AuthenticatedAutomationRoute = AuthenticatedAutomationRouteImport.update({
-  id: '/automation',
-  path: '/automation',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedAssetsRoute = AuthenticatedAssetsRouteImport.update({
@@ -87,7 +81,6 @@ export interface FileRoutesByFullPath {
   '/auth': typeof AuthRoute
   '/accounts': typeof AuthenticatedAccountsRoute
   '/assets': typeof AuthenticatedAssetsRoute
-  '/automation': typeof AuthenticatedAutomationRoute
   '/publish': typeof AuthenticatedPublishRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/aigc/copy': typeof AuthenticatedAigcCopyRoute
@@ -99,7 +92,6 @@ export interface FileRoutesByTo {
   '/auth': typeof AuthRoute
   '/accounts': typeof AuthenticatedAccountsRoute
   '/assets': typeof AuthenticatedAssetsRoute
-  '/automation': typeof AuthenticatedAutomationRoute
   '/publish': typeof AuthenticatedPublishRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/': typeof AuthenticatedIndexRoute
@@ -114,7 +106,6 @@ export interface FileRoutesById {
   '/auth': typeof AuthRoute
   '/_authenticated/accounts': typeof AuthenticatedAccountsRoute
   '/_authenticated/assets': typeof AuthenticatedAssetsRoute
-  '/_authenticated/automation': typeof AuthenticatedAutomationRoute
   '/_authenticated/publish': typeof AuthenticatedPublishRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
@@ -130,7 +121,6 @@ export interface FileRouteTypes {
     | '/auth'
     | '/accounts'
     | '/assets'
-    | '/automation'
     | '/publish'
     | '/settings'
     | '/aigc/copy'
@@ -142,7 +132,6 @@ export interface FileRouteTypes {
     | '/auth'
     | '/accounts'
     | '/assets'
-    | '/automation'
     | '/publish'
     | '/settings'
     | '/'
@@ -156,7 +145,6 @@ export interface FileRouteTypes {
     | '/auth'
     | '/_authenticated/accounts'
     | '/_authenticated/assets'
-    | '/_authenticated/automation'
     | '/_authenticated/publish'
     | '/_authenticated/settings'
     | '/_authenticated/'
@@ -208,13 +196,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedPublishRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
-    '/_authenticated/automation': {
-      id: '/_authenticated/automation'
-      path: '/automation'
-      fullPath: '/automation'
-      preLoaderRoute: typeof AuthenticatedAutomationRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
     '/_authenticated/assets': {
       id: '/_authenticated/assets'
       path: '/assets'
@@ -263,7 +244,6 @@ declare module '@tanstack/react-router' {
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedAccountsRoute: typeof AuthenticatedAccountsRoute
   AuthenticatedAssetsRoute: typeof AuthenticatedAssetsRoute
-  AuthenticatedAutomationRoute: typeof AuthenticatedAutomationRoute
   AuthenticatedPublishRoute: typeof AuthenticatedPublishRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
@@ -276,7 +256,6 @@ interface AuthenticatedRouteRouteChildren {
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAccountsRoute: AuthenticatedAccountsRoute,
   AuthenticatedAssetsRoute: AuthenticatedAssetsRoute,
-  AuthenticatedAutomationRoute: AuthenticatedAutomationRoute,
   AuthenticatedPublishRoute: AuthenticatedPublishRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
