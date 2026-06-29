@@ -108,15 +108,24 @@ function AutomationSection() {
 
   const toggle = async (t: AutomationTask) => {
     await automationApi.update(t.id, { status: t.status === "enabled" ? "paused" : "enabled" });
-    qc.setQueryData<AutomationTask[]>(["automations"], (prev) =>
-      (prev ?? []).map((x) =>
-        x.id === t.id ? { ...x, status: x.status === "enabled" ? "paused" : "enabled" } : x,
-      ),
-    );
+    qc.invalidateQueries({ queryKey: ["automations"] });
   };
+
+  const migrationMissing =
+    tasks.isError && (tasks.error as any)?.code === "MIGRATION_REQUIRED";
 
   return (
     <>
+      {migrationMissing && (
+        <div className="mb-3.5 flex items-start gap-2 rounded-md border border-[color-mix(in_oklab,var(--warning)_30%,white)] bg-[color-mix(in_oklab,var(--warning)_10%,white)] px-3.5 py-3 text-xs text-[var(--warning)]">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <div>
+            自动化任务表 <code className="font-mono">automation_tasks</code> 还未在共享库创建。请在共享库执行
+            <code className="mx-1 font-mono">docs/migrations/2026-06-29-publish-center.sql</code>
+            ，然后同步 <code className="font-mono">types.ts</code>。
+          </div>
+        </div>
+      )}
       <div className="mb-3.5 flex items-center justify-between">
         <div className="flex h-10 items-center gap-1 rounded-md border border-border bg-white p-1">
           {[
@@ -199,7 +208,12 @@ function AutomationSection() {
         </table>
       </Panel>
 
-      {drawerOpen && <NewTaskDrawer onClose={() => setDrawerOpen(false)} />}
+      {drawerOpen && (
+        <NewTaskDrawer
+          onClose={() => setDrawerOpen(false)}
+          onCreated={() => qc.invalidateQueries({ queryKey: ["automations"] })}
+        />
+      )}
     </>
   );
 }
