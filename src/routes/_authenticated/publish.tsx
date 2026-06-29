@@ -1,18 +1,20 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 import { AppShell } from "@/components/app/AppShell";
 import { PageHeader, Panel, EmptyState } from "@/components/app/PageHeader";
 import { StatusBadge, jobStatusLabel, jobStatusTone } from "@/components/app/StatusBadge";
 import { PlatformBadge } from "@/components/app/PlatformBadge";
 import { publishApi } from "@/api/publish";
+import { accountsApi } from "@/api/accounts";
 import { assetsApi } from "@/api/assets";
 import { shopsApi } from "@/api/shops";
-import { automationApi } from "@/api/automation";
+import { automationApi, type AutomationInput } from "@/api/automation";
 import { aigcApi, type GeneratedCopy } from "@/api/aigc";
-import { Check, Sparkles, ChevronRight, Send, Plus, Play, Pause, X, ZapOff } from "lucide-react";
+import { Check, Sparkles, ChevronRight, Send, Plus, Play, Pause, X, ZapOff, RefreshCw, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { Platform, AutomationTask } from "@/types";
+import type { Platform, AutomationTask, PublishJob } from "@/types";
 
 type Mode = "manual" | "auto";
 
