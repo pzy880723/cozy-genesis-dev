@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { AppShell } from "@/components/app/AppShell";
 import { PageHeader } from "@/components/app/PageHeader";
-import { Video, Image as ImageIcon, FileText, Sparkles, ChevronRight, Library, Send } from "lucide-react";
+import { Video, Image as ImageIcon, FileText, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/aigc/")({
@@ -48,18 +48,6 @@ function AigcHub() {
         <SubTile to="/aigc/copy" num="03" icon={FileText} title="AI 文案" desc="看图写文 · 平台口吻 · 标题标签" />
       </div>
 
-      {/* 管理与分发 */}
-      <div className="mt-6">
-        <div className="mb-2 flex items-center gap-2 px-1">
-          <span className="h-1 w-1 rounded-full bg-primary" />
-          <span className="text-[11px] font-black uppercase tracking-[0.18em] text-primary">管理与分发</span>
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <ManageTile to="/assets" icon={Library} title="素材库" desc="历史产出 · 一键复用 · 下载视频" />
-          <ManageTile to="/publish" icon={Send} title="内容分发" desc="抖音 · 小红书 · 视频号 · 快手" />
-        </div>
-      </div>
-
       <p className="mt-6 text-center text-[11px] font-medium text-muted-foreground">
         品牌信息 · 商品类目 · 门店定位
         <span className="ml-2 font-black text-primary">已经预设给 AI，不用每次再说一遍</span>
@@ -85,25 +73,6 @@ function SubTile({
           <p className="mt-1 text-xs font-medium text-muted-foreground">{desc}</p>
         </div>
         <ChevronRight className="h-4 w-4 text-muted-foreground/40 transition-transform group-hover:translate-x-0.5" />
-      </div>
-    </Link>
-  );
-}
-
-function ManageTile({
-  to, icon: Icon, title, desc,
-}: { to: string; icon: any; title: string; desc: string }) {
-  return (
-    <Link to={to} className="group block">
-      <div className="flex items-center gap-3 rounded-lg border border-border bg-card p-4 transition-all hover:border-primary/40">
-        <div className="flex h-10 w-10 items-center justify-center rounded-md bg-secondary text-graphite">
-          <Icon className="h-5 w-5" strokeWidth={1.5} />
-        </div>
-        <div className="flex-1">
-          <div className="text-sm font-black">{title}</div>
-          <div className="mt-0.5 text-[11px] font-medium text-muted-foreground">{desc}</div>
-        </div>
-        <ChevronRight className="h-4 w-4 text-muted-foreground/40" />
       </div>
     </Link>
   );
