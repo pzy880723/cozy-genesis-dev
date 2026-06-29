@@ -231,13 +231,63 @@ function IconAction({ icon: Icon, label, onClick }: { icon: React.ComponentType<
   );
 }
 
-function NewTaskDrawer({ onClose }: { onClose: () => void }) {
+function NewTaskDrawer({ onClose, onCreated }: { onClose: () => void; onCreated?: () => void }) {
   const shops = useQuery({ queryKey: ["shops"], queryFn: () => shopsApi.list() });
   const [name, setName] = useState("");
+  const [scope, setScope] = useState<AutomationInput["scope_type"]>("hq");
+  const [shopIds, setShopIds] = useState<string[]>([]);
+  const [contentKind, setContentKind] = useState<AutomationInput["content_kind"]>("image_text");
+  const [assetSource, setAssetSource] = useState<AutomationInput["asset_source"]>("mixed");
+  const [dailyLimit, setDailyLimit] = useState<number>(3);
+  const [runTime, setRunTime] = useState<string>("10:00");
+  const [failurePolicy, setFailurePolicy] = useState<AutomationInput["failure_policy"]>("retry_once");
   const [platforms, setPlatforms] = useState<Platform[]>(["xhs", "douyin", "wechat_channels", "kuaishou"]);
+  const [submitting, setSubmitting] = useState(false);
+
+  // 默认选第一个门店
+  useEffect(() => {
+    if (!shopIds.length && shops.data && shops.data.length > 0) {
+      setShopIds([shops.data[0].id]);
+    }
+  }, [shops.data]);
 
   const toggleP = (p: Platform) =>
     setPlatforms((arr) => (arr.includes(p) ? arr.filter((x) => x !== p) : [...arr, p]));
+  const toggleShop = (id: string) =>
+    setShopIds((arr) =>
+      scope === "store"
+        ? [id]
+        : arr.includes(id)
+          ? arr.filter((x) => x !== id)
+          : [...arr, id],
+    );
+
+  const canSubmit = name.trim().length > 0 && shopIds.length > 0 && platforms.length > 0 && !submitting;
+
+  const submit = async () => {
+    if (!canSubmit) return;
+    setSubmitting(true);
+    try {
+      await automationApi.create({
+        name,
+        scope_type: scope,
+        shop_ids: shopIds,
+        content_kind: contentKind,
+        asset_source: assetSource,
+        platforms,
+        daily_limit: dailyLimit,
+        run_times: [runTime],
+        failure_policy: failurePolicy,
+      });
+      toast.success("自动化任务已创建并启用");
+      onCreated?.();
+      onClose();
+    } catch (e: any) {
+      toast.error("创建失败：" + (e?.message ?? "未知错误"));
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex">
@@ -257,41 +307,75 @@ function NewTaskDrawer({ onClose }: { onClose: () => void }) {
             />
           </DrawerField>
           <DrawerField label="任务归属">
-            <select className="h-9 w-full rounded-md border border-border bg-white px-2 text-sm">
-              <option>总部品牌</option>
-              <option>单个门店</option>
-              <option>多个门店</option>
+            <select
+              value={scope}
+              onChange={(e) => setScope(e.target.value as typeof scope)}
+              className="h-9 w-full rounded-md border border-border bg-white px-2 text-sm"
+            >
+              <option value="hq">总部品牌</option>
+              <option value="store">单个门店</option>
+              <option value="multi_store">多个门店</option>
             </select>
           </DrawerField>
           <DrawerField label="门店">
             <div className="flex flex-wrap gap-2">
-              {(shops.data ?? []).map((s) => (
-                <span key={s.id} className="rounded-md border border-border bg-white px-2.5 py-1 text-xs font-semibold text-graphite">
-                  {s.name}
-                </span>
-              ))}
+              {(shops.data ?? []).map((s) => {
+                const on = shopIds.includes(s.id);
+                return (
+                  <button
+                    key={s.id}
+                    type="button"
+                    onClick={() => toggleShop(s.id)}
+                    className={cn(
+                      "rounded-md border px-2.5 py-1 text-xs font-semibold",
+                      on ? "border-primary bg-primary-soft text-primary" : "border-border bg-white text-graphite",
+                    )}
+                  >
+                    {s.name}
+                  </button>
+                );
+              })}
             </div>
           </DrawerField>
           <DrawerField label="素材来源">
-            <select className="h-9 w-full rounded-md border border-border bg-white px-2 text-sm">
-              <option>智能从素材库挑选</option>
-              <option>仅 AI 生成</option>
-              <option>仅门店上传</option>
+            <select
+              value={assetSource}
+              onChange={(e) => setAssetSource(e.target.value as typeof assetSource)}
+              className="h-9 w-full rounded-md border border-border bg-white px-2 text-sm"
+            >
+              <option value="mixed">智能从素材库挑选</option>
+              <option value="ai">仅 AI 生成</option>
+              <option value="upload">仅门店上传</option>
             </select>
           </DrawerField>
           <DrawerField label="内容类型">
-            <select className="h-9 w-full rounded-md border border-border bg-white px-2 text-sm">
-              <option>图文</option>
-              <option>短视频</option>
-              <option>纯文案</option>
+            <select
+              value={contentKind}
+              onChange={(e) => setContentKind(e.target.value as typeof contentKind)}
+              className="h-9 w-full rounded-md border border-border bg-white px-2 text-sm"
+            >
+              <option value="image_text">图文</option>
+              <option value="video">短视频</option>
+              <option value="copy">纯文案</option>
             </select>
           </DrawerField>
           <div className="grid grid-cols-2 gap-3">
             <DrawerField label="每日数量">
-              <input type="number" defaultValue={3} className="h-9 w-full rounded-md border border-border bg-white px-3 text-sm" />
+              <input
+                type="number"
+                min={1}
+                value={dailyLimit}
+                onChange={(e) => setDailyLimit(Number(e.target.value) || 1)}
+                className="h-9 w-full rounded-md border border-border bg-white px-3 text-sm"
+              />
             </DrawerField>
             <DrawerField label="执行时间">
-              <input type="time" defaultValue="10:00" className="h-9 w-full rounded-md border border-border bg-white px-3 text-sm" />
+              <input
+                type="time"
+                value={runTime}
+                onChange={(e) => setRunTime(e.target.value)}
+                className="h-9 w-full rounded-md border border-border bg-white px-3 text-sm"
+              />
             </DrawerField>
           </div>
           <DrawerField label="发布平台（默认全选）">
@@ -315,23 +399,25 @@ function NewTaskDrawer({ onClose }: { onClose: () => void }) {
             </div>
           </DrawerField>
           <DrawerField label="失败处理策略">
-            <select className="h-9 w-full rounded-md border border-border bg-white px-2 text-sm">
-              <option>自动重试 1 次</option>
-              <option>暂停任务</option>
-              <option>通知运营</option>
+            <select
+              value={failurePolicy}
+              onChange={(e) => setFailurePolicy(e.target.value as typeof failurePolicy)}
+              className="h-9 w-full rounded-md border border-border bg-white px-2 text-sm"
+            >
+              <option value="retry_once">自动重试 1 次</option>
+              <option value="pause">暂停任务</option>
+              <option value="notify">通知运营</option>
             </select>
           </DrawerField>
         </div>
         <footer className="flex h-14 items-center justify-end gap-2 border-t border-border px-5">
           <button onClick={onClose} className="h-9 rounded-md border border-border bg-white px-4 text-sm font-bold hover:bg-secondary">取消</button>
           <button
-            onClick={async () => {
-              await automationApi.create({ name, platforms });
-              onClose();
-            }}
-            className="inline-flex h-9 items-center gap-1.5 rounded-md bg-primary px-4 text-sm font-bold text-primary-foreground hover:opacity-95"
+            onClick={submit}
+            disabled={!canSubmit}
+            className="inline-flex h-9 items-center gap-1.5 rounded-md bg-primary px-4 text-sm font-bold text-primary-foreground hover:opacity-95 disabled:opacity-50"
           >
-            创建并启用
+            {submitting ? "创建中…" : "创建并启用"}
           </button>
         </footer>
       </aside>
