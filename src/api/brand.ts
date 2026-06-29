@@ -13,48 +13,52 @@ export type BrandProfile = {
 const PROFILES: Record<string, BrandProfile> = {
   hq: {
     shopId: "hq",
-    brandName: "BOOMER.OFF",
+    brandName: "BOOMER·OFF（总部）",
     brandIntro:
-      "BOOMER.OFF 是一个聚焦城市青年生活方式的潮流集合品牌。我们做潮流，也做态度，把街头剪裁、IP 联名和门店体验串成一条线。",
-    brandTone: "街头 · 自信 · 微幽默",
-    categories: ["服饰", "鞋履", "配饰", "IP 联名"],
-    primaryCategory: "服饰",
+      "BOOMER·OFF 是国内首家标准化中古连锁品牌，覆盖日本与欧洲中古杂货，1950s–千禧年初。30,000+ SKU、6.9 元起、平价、海量、可信赖；不做高冷精品，不做拍卖，不做潮牌炒货。",
+    brandTone: "克制 · 有质感 · 像随手记",
+    categories: [
+      "日本中古瓷器",
+      "趣味玩具",
+      "IP 玩偶",
+      "黑胶唱片",
+      "中古数码",
+      "中古杂货",
+      "欧洲中古小物",
+    ],
   },
   shop_zxth: {
     shopId: "shop_zxth",
-    brandName: "瓷器天堂 · 中信泰富店",
+    brandName: "BOOMER·OFF · 上海中信泰富店",
     brandIntro:
-      "瓷器天堂以「东方器物 · 当代生活」为主张，主营景德镇手作瓷器、茶器与香器。中信泰富店紧邻陆家嘴，主打高端商务礼赠与茶席体验。",
-    brandTone: "国风 · 沉稳 · 治愈",
-    categories: ["瓷器", "茶具", "香器", "礼盒"],
-    primaryCategory: "瓷器",
+      "南京西路中信泰富广场 B1 旗舰，无门面通透铺位（无门框、无门头墙、开放式陈列）。汇集日本与欧洲的中古瓷器、趣味玩具、顶流 IP 玩偶、黑胶、中古数码等各式杂货，6.9 元起的平价中古寻宝乐园。",
+    brandTone: "克制 · 有质感 · 像随手记",
+    categories: [
+      "日本中古瓷器",
+      "趣味玩具",
+      "IP 玩偶",
+      "黑胶唱片",
+      "中古数码",
+      "中古杂货",
+      "欧洲中古小物",
+    ],
+    primaryCategory: "日本中古瓷器",
   },
   shop_mh728: {
     shopId: "shop_mh728",
-    brandName: "玩具天堂 · 闵行 728",
+    brandName: "BOOMER·OFF · 闵行 728 总部",
     brandIntro:
-      "玩具天堂面向 18-35 岁玩家与亲子家庭，覆盖潮玩盲盒、毛绒玩偶、黑胶唱片与数码周边四大主线，强调「治愈感」与「收藏感」并重。",
-    brandTone: "治愈 · 俏皮 · 有梗",
-    categories: ["玩偶", "潮玩盲盒", "黑胶", "数码"],
-    primaryCategory: "玩偶",
-  },
-  shop_njxjk: {
-    shopId: "shop_njxjk",
-    brandName: "BOOMER.OFF · 南京新街口",
-    brandIntro:
-      "南京新街口旗舰，承担华东区新品首发与社群活动，以街头潮流与本地化设计联名为主。",
-    brandTone: "潮流 · 年轻 · 在地",
-    categories: ["服饰", "鞋履", "联名"],
-    primaryCategory: "服饰",
-  },
-  shop_jaza: {
-    shopId: "shop_jaza",
-    brandName: "BOOMER.OFF · 静安店",
-    brandIntro:
-      "静安店主打日常通勤与轻潮风格，承接街区社群与品牌沙龙，定期联动咖啡与音乐场景。",
-    brandTone: "轻潮 · 日常 · 文艺",
-    categories: ["服饰", "配饰", "周边"],
-    primaryCategory: "服饰",
+      "总部及货品中转中心（非零售），用于内容拍摄与培训素材；可作为产品展示 / 新品上架类内容的取景地。",
+    brandTone: "克制 · 内部 · 纪实",
+    categories: [
+      "日本中古瓷器",
+      "趣味玩具",
+      "IP 玩偶",
+      "黑胶唱片",
+      "中古数码",
+      "中古杂货",
+      "欧洲中古小物",
+    ],
   },
 };
 
@@ -71,41 +75,52 @@ export function getBrandProfile(shopId: string | null | undefined): BrandProfile
   return { shopId: shopId ?? "", ...FALLBACK };
 }
 
-// 大类视频类型（不含细分品类）
+// 大类视频类型 · 与 BOOMER·OFF 品牌文档「十、视频内容规则」四类必做对齐
 export const ONECLICK_VIDEO_TYPES = [
-  { v: "store_tour", label: "探店" },
-  { v: "new_arrival", label: "上新" },
-  { v: "store_ambience", label: "环境" },
-  { v: "brand_intro", label: "品牌介绍" },
-  { v: "activity", label: "活动" },
-  { v: "customer_review", label: "顾客好评" },
+  { v: "store_tour", label: "探店（主推）" },
+  { v: "product_showcase", label: "产品展示" },
+  { v: "store_ambience", label: "店铺氛围" },
+  { v: "new_arrival", label: "新品上架" },
 ] as const;
 
 export type OneClickVideoType = (typeof ONECLICK_VIDEO_TYPES)[number]["v"];
 
 export const ALL_CATEGORY = "__all__";
 
+// BOOMER·OFF 品牌文档「十二、商品类目」全量池
+export const BOOMER_CATEGORY_POOL = [
+  "日本中古瓷器",
+  "趣味玩具",
+  "IP 玩偶",
+  "黑胶唱片",
+  "中古数码",
+  "中古杂货",
+  "欧洲中古小物",
+];
+
 export function buildCategoryOptions(profile: BrandProfile): { v: string; label: string }[] {
+  const merged = new Set<string>([...profile.categories, ...BOOMER_CATEGORY_POOL]);
   return [
     { v: ALL_CATEGORY, label: "全品类" },
-    ...profile.categories.map((c) => ({ v: c, label: c })),
+    ...Array.from(merged).map((c) => ({ v: c, label: c })),
   ];
 }
 
 export function brandHighlight(
   profile: BrandProfile,
-  types: OneClickVideoType[],
+  type: OneClickVideoType,
   category: string,
 ): string {
-  const typeLabels = types
-    .map((t) => ONECLICK_VIDEO_TYPES.find((x) => x.v === t)?.label ?? t)
-    .join(" / ");
+  const typeLabel = ONECLICK_VIDEO_TYPES.find((x) => x.v === type)?.label ?? type;
   const cat = category === ALL_CATEGORY ? "全品类" : category;
   return [
     `【品牌】${profile.brandName}`,
     `【语调】${profile.brandTone}`,
     `【品牌介绍】${profile.brandIntro}`,
-    `【本片类型】${typeLabels}`,
+    `【本片类型】${typeLabel}`,
     `【倾向品类】${cat}`,
+    `【内容铁律】100% 简体中文；不编造价格/年代/产地/品牌/材质；禁词：主播、直播间、保真、秒杀、全网最低、拍卖行级别、独家供应商；称呼用「你/您/店员」，不用「宝宝们/家人们」；不喊话、不带货式叫卖。`,
+    `【视觉风格】真人写实纪实风（非插画、非动漫）；暖光 / 电影级三点布光；中焦 + 微距；胶片颗粒。`,
+    `【硬约束】商场内门店，无门框、无户外；探店类首镜必须是门头（BOOMER·OFF 招牌或店铺入口）。`,
   ].join("\n");
 }
