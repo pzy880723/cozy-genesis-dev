@@ -10,6 +10,7 @@ export type CreateJobInput = {
   assetIds: string[];
   copy?: { title: string; body: string; tags: string[] };
   scheduledAt?: string;
+  automationTaskId?: string;
 };
 
 export type CreateJobResult = {
@@ -157,7 +158,7 @@ export const publishApi = {
 
     // 3) 插 job
     const { data: userData } = await supabase.auth.getUser();
-    const jobInsert = {
+    const jobInsert: any = {
       shop_id: input.shopIds[0],
       kind: input.contentType,
       title: input.copy?.title ?? input.title,
@@ -175,6 +176,9 @@ export const publishApi = {
       } as any,
       created_by: userData.user?.id ?? null,
     };
+    if (input.automationTaskId) {
+      jobInsert.automation_task_id = input.automationTaskId;
+    }
     const { data: jobRow, error: jobErr } = await supabase
       .from("social_publish_jobs")
       .insert(jobInsert)

@@ -41,3 +41,62 @@ CREATE POLICY "authenticated write" ON public.automation_tasks
 ALTER TABLE public.social_publish_targets
   ADD COLUMN IF NOT EXISTS claim_token uuid,
   ADD COLUMN IF NOT EXISTS claim_expires_at timestamptz;
+
+-- 3. social_publish_jobs 关联回自动化任务
+ALTER TABLE public.social_publish_jobs
+  ADD COLUMN IF NOT EXISTS automation_task_id uuid REFERENCES public.automation_tasks(id) ON DELETE SET NULL;
+
+CREATE INDEX IF NOT EXISTS idx_social_publish_jobs_automation_task_created
+  ON public.social_publish_jobs(automation_task_id, created_at DESC)
+  WHERE automation_task_id IS NOT NULL;
+
+-- 4. Worker 领单热路径索引
+CREATE INDEX IF NOT EXISTS idx_social_publish_targets_pending_created
+  ON public.social_publish_targets(created_at)
+  WHERE status = 'pending';
+
+-- 5. target 状态变化时自动汇总到 job
+CREATE OR REPLACE FUNCTION public._summarize_publish_job()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_job uuid := COALESCE(NEW.job_id, OLD.job_id);
+  v_total int;
+  v_done int;
+  v_failed int;
+  v_running int;
+  v_new_status text;
+BEGIN
+  SELECT
+    count(*),
+    count(*) FILTER (WHERE status = 'success'),
+    count(*) FILTER (WHERE status IN ('failed','cancelled')),
+    count(*) FILTER (WHERE status IN ('claimed','running'))
+  INTO v_total, v_done, v_failed, v_running
+  FROM public.social_publish_targets WHERE job_id = v_job;
+
+  IF v_total = 0 THEN
+    RETURN COALESCE(NEW, OLD);
+  ELSIF v_done + v_failed = v_total THEN
+    IF v_failed = 0 THEN v_new_status := 'success';
+    ELSIF v_done = 0 THEN v_new_status := 'failed';
+    ELSE v_new_status := 'partial_success';
+    END IF;
+  ELSIF v_running > 0 OR v_done > 0 OR v_failed > 0 THEN
+    v_new_status := 'running';
+  ELSE
+    v_new_status := 'queued';
+  END IF;
+
+  UPDATE public.social_publish_jobs
+     SET status = v_new_status, updated_at = now()
+   WHERE id = v_job
+     AND status <> v_new_status
+     AND status <> 'cancelled';
+
+  RETURN COALESCE(NEW, OLD);
+END $$;
+
+DROP TRIGGER IF EXISTS trg_summarize_publish_job ON public.social_publish_targets;
+CREATE TRIGGER trg_summarize_publish_job
+AFTER INSERT OR UPDATE OF status ON public.social_publish_targets
+FOR EACH ROW EXECUTE FUNCTION public._summarize_publish_job();
