@@ -1,18 +1,20 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 import { AppShell } from "@/components/app/AppShell";
 import { PageHeader, Panel, EmptyState } from "@/components/app/PageHeader";
 import { StatusBadge, jobStatusLabel, jobStatusTone } from "@/components/app/StatusBadge";
 import { PlatformBadge } from "@/components/app/PlatformBadge";
 import { publishApi } from "@/api/publish";
+import { accountsApi } from "@/api/accounts";
 import { assetsApi } from "@/api/assets";
 import { shopsApi } from "@/api/shops";
-import { automationApi } from "@/api/automation";
+import { automationApi, type AutomationInput } from "@/api/automation";
 import { aigcApi, type GeneratedCopy } from "@/api/aigc";
-import { Check, Sparkles, ChevronRight, Send, Plus, Play, Pause, X, ZapOff } from "lucide-react";
+import { Check, Sparkles, ChevronRight, Send, Plus, Play, Pause, X, ZapOff, RefreshCw, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { Platform, AutomationTask } from "@/types";
+import type { Platform, AutomationTask, PublishJob } from "@/types";
 
 type Mode = "manual" | "auto";
 
@@ -106,15 +108,24 @@ function AutomationSection() {
 
   const toggle = async (t: AutomationTask) => {
     await automationApi.update(t.id, { status: t.status === "enabled" ? "paused" : "enabled" });
-    qc.setQueryData<AutomationTask[]>(["automations"], (prev) =>
-      (prev ?? []).map((x) =>
-        x.id === t.id ? { ...x, status: x.status === "enabled" ? "paused" : "enabled" } : x,
-      ),
-    );
+    qc.invalidateQueries({ queryKey: ["automations"] });
   };
+
+  const migrationMissing =
+    tasks.isError && (tasks.error as any)?.code === "MIGRATION_REQUIRED";
 
   return (
     <>
+      {migrationMissing && (
+        <div className="mb-3.5 flex items-start gap-2 rounded-md border border-[color-mix(in_oklab,var(--warning)_30%,white)] bg-[color-mix(in_oklab,var(--warning)_10%,white)] px-3.5 py-3 text-xs text-[var(--warning)]">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <div>
+            自动化任务表 <code className="font-mono">automation_tasks</code> 还未在共享库创建。请在共享库执行
+            <code className="mx-1 font-mono">docs/migrations/2026-06-29-publish-center.sql</code>
+            ，然后同步 <code className="font-mono">types.ts</code>。
+          </div>
+        </div>
+      )}
       <div className="mb-3.5 flex items-center justify-between">
         <div className="flex h-10 items-center gap-1 rounded-md border border-border bg-white p-1">
           {[
@@ -197,7 +208,12 @@ function AutomationSection() {
         </table>
       </Panel>
 
-      {drawerOpen && <NewTaskDrawer onClose={() => setDrawerOpen(false)} />}
+      {drawerOpen && (
+        <NewTaskDrawer
+          onClose={() => setDrawerOpen(false)}
+          onCreated={() => qc.invalidateQueries({ queryKey: ["automations"] })}
+        />
+      )}
     </>
   );
 }
@@ -215,13 +231,63 @@ function IconAction({ icon: Icon, label, onClick }: { icon: React.ComponentType<
   );
 }
 
-function NewTaskDrawer({ onClose }: { onClose: () => void }) {
+function NewTaskDrawer({ onClose, onCreated }: { onClose: () => void; onCreated?: () => void }) {
   const shops = useQuery({ queryKey: ["shops"], queryFn: () => shopsApi.list() });
   const [name, setName] = useState("");
+  const [scope, setScope] = useState<AutomationInput["scope_type"]>("hq");
+  const [shopIds, setShopIds] = useState<string[]>([]);
+  const [contentKind, setContentKind] = useState<AutomationInput["content_kind"]>("image_text");
+  const [assetSource, setAssetSource] = useState<AutomationInput["asset_source"]>("mixed");
+  const [dailyLimit, setDailyLimit] = useState<number>(3);
+  const [runTime, setRunTime] = useState<string>("10:00");
+  const [failurePolicy, setFailurePolicy] = useState<AutomationInput["failure_policy"]>("retry_once");
   const [platforms, setPlatforms] = useState<Platform[]>(["xhs", "douyin", "wechat_channels", "kuaishou"]);
+  const [submitting, setSubmitting] = useState(false);
+
+  // 默认选第一个门店
+  useEffect(() => {
+    if (!shopIds.length && shops.data && shops.data.length > 0) {
+      setShopIds([shops.data[0].id]);
+    }
+  }, [shops.data]);
 
   const toggleP = (p: Platform) =>
     setPlatforms((arr) => (arr.includes(p) ? arr.filter((x) => x !== p) : [...arr, p]));
+  const toggleShop = (id: string) =>
+    setShopIds((arr) =>
+      scope === "store"
+        ? [id]
+        : arr.includes(id)
+          ? arr.filter((x) => x !== id)
+          : [...arr, id],
+    );
+
+  const canSubmit = name.trim().length > 0 && shopIds.length > 0 && platforms.length > 0 && !submitting;
+
+  const submit = async () => {
+    if (!canSubmit) return;
+    setSubmitting(true);
+    try {
+      await automationApi.create({
+        name,
+        scope_type: scope,
+        shop_ids: shopIds,
+        content_kind: contentKind,
+        asset_source: assetSource,
+        platforms,
+        daily_limit: dailyLimit,
+        run_times: [runTime],
+        failure_policy: failurePolicy,
+      });
+      toast.success("自动化任务已创建并启用");
+      onCreated?.();
+      onClose();
+    } catch (e: any) {
+      toast.error("创建失败：" + (e?.message ?? "未知错误"));
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex">
@@ -241,41 +307,75 @@ function NewTaskDrawer({ onClose }: { onClose: () => void }) {
             />
           </DrawerField>
           <DrawerField label="任务归属">
-            <select className="h-9 w-full rounded-md border border-border bg-white px-2 text-sm">
-              <option>总部品牌</option>
-              <option>单个门店</option>
-              <option>多个门店</option>
+            <select
+              value={scope}
+              onChange={(e) => setScope(e.target.value as typeof scope)}
+              className="h-9 w-full rounded-md border border-border bg-white px-2 text-sm"
+            >
+              <option value="hq">总部品牌</option>
+              <option value="store">单个门店</option>
+              <option value="multi_store">多个门店</option>
             </select>
           </DrawerField>
           <DrawerField label="门店">
             <div className="flex flex-wrap gap-2">
-              {(shops.data ?? []).map((s) => (
-                <span key={s.id} className="rounded-md border border-border bg-white px-2.5 py-1 text-xs font-semibold text-graphite">
-                  {s.name}
-                </span>
-              ))}
+              {(shops.data ?? []).map((s) => {
+                const on = shopIds.includes(s.id);
+                return (
+                  <button
+                    key={s.id}
+                    type="button"
+                    onClick={() => toggleShop(s.id)}
+                    className={cn(
+                      "rounded-md border px-2.5 py-1 text-xs font-semibold",
+                      on ? "border-primary bg-primary-soft text-primary" : "border-border bg-white text-graphite",
+                    )}
+                  >
+                    {s.name}
+                  </button>
+                );
+              })}
             </div>
           </DrawerField>
           <DrawerField label="素材来源">
-            <select className="h-9 w-full rounded-md border border-border bg-white px-2 text-sm">
-              <option>智能从素材库挑选</option>
-              <option>仅 AI 生成</option>
-              <option>仅门店上传</option>
+            <select
+              value={assetSource}
+              onChange={(e) => setAssetSource(e.target.value as typeof assetSource)}
+              className="h-9 w-full rounded-md border border-border bg-white px-2 text-sm"
+            >
+              <option value="mixed">智能从素材库挑选</option>
+              <option value="ai">仅 AI 生成</option>
+              <option value="upload">仅门店上传</option>
             </select>
           </DrawerField>
           <DrawerField label="内容类型">
-            <select className="h-9 w-full rounded-md border border-border bg-white px-2 text-sm">
-              <option>图文</option>
-              <option>短视频</option>
-              <option>纯文案</option>
+            <select
+              value={contentKind}
+              onChange={(e) => setContentKind(e.target.value as typeof contentKind)}
+              className="h-9 w-full rounded-md border border-border bg-white px-2 text-sm"
+            >
+              <option value="image_text">图文</option>
+              <option value="video">短视频</option>
+              <option value="copy">纯文案</option>
             </select>
           </DrawerField>
           <div className="grid grid-cols-2 gap-3">
             <DrawerField label="每日数量">
-              <input type="number" defaultValue={3} className="h-9 w-full rounded-md border border-border bg-white px-3 text-sm" />
+              <input
+                type="number"
+                min={1}
+                value={dailyLimit}
+                onChange={(e) => setDailyLimit(Number(e.target.value) || 1)}
+                className="h-9 w-full rounded-md border border-border bg-white px-3 text-sm"
+              />
             </DrawerField>
             <DrawerField label="执行时间">
-              <input type="time" defaultValue="10:00" className="h-9 w-full rounded-md border border-border bg-white px-3 text-sm" />
+              <input
+                type="time"
+                value={runTime}
+                onChange={(e) => setRunTime(e.target.value)}
+                className="h-9 w-full rounded-md border border-border bg-white px-3 text-sm"
+              />
             </DrawerField>
           </div>
           <DrawerField label="发布平台（默认全选）">
@@ -299,23 +399,25 @@ function NewTaskDrawer({ onClose }: { onClose: () => void }) {
             </div>
           </DrawerField>
           <DrawerField label="失败处理策略">
-            <select className="h-9 w-full rounded-md border border-border bg-white px-2 text-sm">
-              <option>自动重试 1 次</option>
-              <option>暂停任务</option>
-              <option>通知运营</option>
+            <select
+              value={failurePolicy}
+              onChange={(e) => setFailurePolicy(e.target.value as typeof failurePolicy)}
+              className="h-9 w-full rounded-md border border-border bg-white px-2 text-sm"
+            >
+              <option value="retry_once">自动重试 1 次</option>
+              <option value="pause">暂停任务</option>
+              <option value="notify">通知运营</option>
             </select>
           </DrawerField>
         </div>
         <footer className="flex h-14 items-center justify-end gap-2 border-t border-border px-5">
           <button onClick={onClose} className="h-9 rounded-md border border-border bg-white px-4 text-sm font-bold hover:bg-secondary">取消</button>
           <button
-            onClick={async () => {
-              await automationApi.create({ name, platforms });
-              onClose();
-            }}
-            className="inline-flex h-9 items-center gap-1.5 rounded-md bg-primary px-4 text-sm font-bold text-primary-foreground hover:opacity-95"
+            onClick={submit}
+            disabled={!canSubmit}
+            className="inline-flex h-9 items-center gap-1.5 rounded-md bg-primary px-4 text-sm font-bold text-primary-foreground hover:opacity-95 disabled:opacity-50"
           >
-            创建并启用
+            {submitting ? "创建中…" : "创建并启用"}
           </button>
         </footer>
       </aside>
@@ -336,15 +438,28 @@ function Wizard() {
   const [step, setStep] = useState(1);
   const [selectedAssets, setSelectedAssets] = useState<string[]>([]);
   const [scope, setScope] = useState<"hq" | "store" | "multi_store">("hq");
-  const [shopIds, setShopIds] = useState<string[]>(["hq"]);
+  const [shopIds, setShopIds] = useState<string[]>([]);
   const [platforms, setPlatforms] = useState<Platform[]>(["xhs", "wechat_channels", "douyin", "kuaishou"]);
   const [copy, setCopy] = useState<GeneratedCopy | null>(null);
   const [generating, setGenerating] = useState(false);
   const [creating, setCreating] = useState(false);
-  const [created, setCreated] = useState(false);
+  const [createdJobId, setCreatedJobId] = useState<string | null>(null);
+  const qc = useQueryClient();
 
   const shops = useQuery({ queryKey: ["shops"], queryFn: () => shopsApi.list() });
   const assets = useQuery({ queryKey: ["assets"], queryFn: () => assetsApi.list() });
+  const accounts = useQuery({
+    queryKey: ["accounts", shopIds, platforms],
+    queryFn: () => accountsApi.list({ shopIds, platforms }),
+    enabled: shopIds.length > 0 && platforms.length > 0,
+  });
+
+  // 拉到门店后默认选第一个
+  useEffect(() => {
+    if (!shopIds.length && shops.data && shops.data.length > 0) {
+      setShopIds([shops.data[0].id]);
+    }
+  }, [shops.data]);
 
   const toggleAsset = (id: string) =>
     setSelectedAssets((arr) => (arr.includes(id) ? arr.filter((x) => x !== id) : [...arr, id]));
@@ -365,7 +480,7 @@ function Wizard() {
   const handleCreate = async () => {
     setCreating(true);
     try {
-      await publishApi.create({
+      const result = await publishApi.create({
         title: copy?.title ?? "新发布任务",
         scopeType: scope,
         shopIds,
@@ -374,7 +489,14 @@ function Wizard() {
         assetIds: selectedAssets,
         copy: copy ? { title: copy.title, body: copy.body, tags: copy.tags } : undefined,
       });
-      setCreated(true);
+      setCreatedJobId(result.jobId);
+      qc.invalidateQueries({ queryKey: ["publish-jobs"] });
+      const missingMsg = result.missing.length
+        ? `；${result.missing.length} 个 (门店×平台) 无可用账号`
+        : "";
+      toast.success(`已创建，${result.targetCount} 个目标已排队${missingMsg}`);
+    } catch (e: any) {
+      toast.error("创建失败：" + (e?.message ?? "未知错误"));
     } finally {
       setCreating(false);
     }
@@ -387,7 +509,12 @@ function Wizard() {
     { n: 4, label: "创建任务" },
   ];
 
-  if (created) {
+  const validAccountCount = useMemo(
+    () => (accounts.data ?? []).filter((a) => a.status === "valid").length,
+    [accounts.data],
+  );
+
+  if (createdJobId) {
     return (
       <Panel>
         <div className="flex flex-col items-center px-6 py-16 text-center">
@@ -401,7 +528,7 @@ function Wizard() {
           <div className="mt-5 flex gap-2">
             <button
               onClick={() => {
-                setCreated(false);
+                setCreatedJobId(null);
                 setStep(1);
                 setSelectedAssets([]);
                 setCopy(null);
@@ -538,6 +665,11 @@ function Wizard() {
                   })}
                 </div>
               </div>
+              <div className="rounded-md bg-[#fafafa] px-3 py-2 text-xs text-graphite">
+                {accounts.isLoading
+                  ? "正在统计可用账号…"
+                  : `本次将发布到 ${validAccountCount} 个有效账号（共 ${shopIds.length * platforms.length} 个 门店×平台 组合）`}
+              </div>
             </div>
             <NextBar onBack={() => setStep(1)} onNext={() => setStep(3)} canNext={shopIds.length > 0 && platforms.length > 0} />
           </Panel>
@@ -636,9 +768,10 @@ function Wizard() {
                 上一步
               </button>
               <button
-                disabled={creating}
+                disabled={creating || validAccountCount === 0}
                 onClick={handleCreate}
                 className="inline-flex h-10 items-center gap-2 rounded-md bg-primary px-4 text-sm font-bold text-primary-foreground hover:opacity-95 disabled:opacity-60"
+                title={validAccountCount === 0 ? "未发现可用账号，请先到「账号管理」绑定" : undefined}
               >
                 <Send className="h-4 w-4" /> {creating ? "创建中…" : "创建并发布"}
               </button>
@@ -690,11 +823,19 @@ function NextBar({ onBack, onNext, canNext }: { onBack?: () => void; onNext: () 
 }
 
 function JobList({ filter }: { filter: "running" | "history" }) {
-  const jobs = useQuery({ queryKey: ["publish-jobs"], queryFn: () => publishApi.list() });
+  const jobs = useQuery({
+    queryKey: ["publish-jobs"],
+    queryFn: () => publishApi.list(),
+    refetchInterval: 5000,
+  });
+  const [detailJobId, setDetailJobId] = useState<string | null>(null);
   const data = (jobs.data ?? []).filter((j) =>
-    filter === "running" ? j.status === "running" || j.status === "queued" : true,
+    filter === "running"
+      ? j.status === "running" || j.status === "queued" || (j.status as string) === "pending"
+      : true,
   );
   return (
+    <>
     <Panel title={filter === "running" ? "进行中的发布" : "全部发布记录"} hint={`共 ${data.length} 条`}>
       <table className="w-full border-collapse text-sm">
         <thead>
@@ -714,22 +855,173 @@ function JobList({ filter }: { filter: "running" | "history" }) {
               <td className="h-12 px-4 text-graphite">{j.shopNames?.join("、")}</td>
               <td className="h-12 px-4">
                 <div className="flex flex-wrap gap-1">
+                  {j.targets.length === 0 && <span className="text-xs text-muted-foreground">—</span>}
                   {j.targets.map((t) => (
                     <PlatformBadge key={t.id} platform={t.platform} />
                   ))}
                 </div>
               </td>
-              <td className="h-12 px-4 text-muted-foreground">{j.scheduledAt}</td>
+              <td className="h-12 px-4 text-muted-foreground">{j.scheduledAt ?? "立即"}</td>
               <td className="h-12 px-4">
                 <StatusBadge tone={jobStatusTone(j.status)}>{jobStatusLabel(j.status)}</StatusBadge>
               </td>
               <td className="h-12 px-4">
-                <button className="text-xs font-bold text-primary hover:underline">查看详情</button>
+                <button
+                  onClick={() => setDetailJobId(j.id)}
+                  className="text-xs font-bold text-primary hover:underline"
+                >
+                  查看详情
+                </button>
               </td>
             </tr>
           ))}
+          {data.length === 0 && (
+            <tr>
+              <td colSpan={6}>
+                <div className="px-6 py-12 text-center text-xs text-muted-foreground">
+                  {jobs.isLoading ? "加载中…" : "暂无任务"}
+                </div>
+              </td>
+            </tr>
+          )}
         </tbody>
       </table>
     </Panel>
+    {detailJobId && (
+      <JobDetailDrawer jobId={detailJobId} onClose={() => setDetailJobId(null)} />
+    )}
+    </>
+  );
+}
+
+function JobDetailDrawer({ jobId, onClose }: { jobId: string; onClose: () => void }) {
+  const qc = useQueryClient();
+  const job = useQuery({
+    queryKey: ["publish-job", jobId],
+    queryFn: () => publishApi.detail(jobId),
+    refetchInterval: 4000,
+  });
+  const data: PublishJob | null | undefined = job.data;
+
+  const refresh = () => {
+    qc.invalidateQueries({ queryKey: ["publish-job", jobId] });
+    qc.invalidateQueries({ queryKey: ["publish-jobs"] });
+  };
+
+  const onRetry = async (targetId: string) => {
+    try {
+      await publishApi.retryTarget(targetId);
+      toast.success("已重新排队");
+      refresh();
+    } catch (e: any) {
+      toast.error("重试失败：" + (e?.message ?? ""));
+    }
+  };
+
+  const onCancel = async () => {
+    if (!confirm("确定取消整个任务？未完成的目标将一并置为已取消。")) return;
+    try {
+      await publishApi.cancel(jobId);
+      toast.success("任务已取消");
+      refresh();
+    } catch (e: any) {
+      toast.error("取消失败：" + (e?.message ?? ""));
+    }
+  };
+
+  const cancellable =
+    data && data.status !== "success" && data.status !== "cancelled" && data.status !== "failed";
+
+  return (
+    <div className="fixed inset-0 z-50 flex">
+      <div className="flex-1 bg-black/30" onClick={onClose} />
+      <aside className="flex h-full w-[560px] flex-col border-l border-border bg-white">
+        <header className="flex h-14 items-center justify-between border-b border-border px-5">
+          <div className="min-w-0">
+            <strong className="block truncate text-base font-black">
+              {data?.title ?? "任务详情"}
+            </strong>
+            <div className="mt-0.5 text-[11px] text-muted-foreground">
+              {data ? `${data.shopNames?.join("、")} · ${data.createdAt?.slice(0, 16).replace("T", " ")}` : ""}
+            </div>
+          </div>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
+            <X className="h-4 w-4" />
+          </button>
+        </header>
+        <div className="flex items-center justify-between border-b border-border bg-[#fafafa] px-5 py-3 text-xs">
+          <div className="flex items-center gap-2">
+            <span className="text-graphite">状态</span>
+            {data && (
+              <StatusBadge tone={jobStatusTone(data.status)}>{jobStatusLabel(data.status)}</StatusBadge>
+            )}
+            {data && <span className="text-muted-foreground">· {data.targets.length} 个目标</span>}
+          </div>
+          <div className="flex items-center gap-1.5">
+            <button onClick={refresh} className="inline-flex h-7 items-center gap-1 rounded border border-border bg-white px-2 text-[11px] font-bold text-graphite hover:bg-secondary">
+              <RefreshCw className="h-3 w-3" /> 刷新
+            </button>
+            {cancellable && (
+              <button onClick={onCancel} className="inline-flex h-7 items-center gap-1 rounded border border-destructive/30 bg-white px-2 text-[11px] font-bold text-destructive hover:bg-primary-soft">
+                取消整个任务
+              </button>
+            )}
+          </div>
+        </div>
+        <div className="flex-1 overflow-auto">
+          {!data && (
+            <div className="px-6 py-12 text-center text-xs text-muted-foreground">
+              {job.isLoading ? "加载中…" : "未找到任务"}
+            </div>
+          )}
+          {data && (
+            <table className="w-full border-collapse text-sm">
+              <thead>
+                <tr className="bg-white text-left text-xs text-muted-foreground">
+                  <th className="h-10 px-5 font-semibold">账号</th>
+                  <th className="h-10 px-3 font-semibold">平台</th>
+                  <th className="h-10 px-3 font-semibold">状态</th>
+                  <th className="h-10 px-3 font-semibold">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.targets.map((t) => (
+                  <tr key={t.id} className="border-t border-[#f0f0f1] align-top">
+                    <td className="px-5 py-3">
+                      <div className="text-sm font-bold">{t.accountName}</div>
+                      {t.errorMessage && (
+                        <div className="mt-1 text-[11px] text-destructive">{t.errorMessage}</div>
+                      )}
+                      {t.publishedUrl && (
+                        <a href={t.publishedUrl} target="_blank" rel="noreferrer" className="mt-1 block text-[11px] text-primary hover:underline">
+                          查看已发布内容 ↗
+                        </a>
+                      )}
+                    </td>
+                    <td className="px-3 py-3"><PlatformBadge platform={t.platform} /></td>
+                    <td className="px-3 py-3">
+                      <StatusBadge tone={jobStatusTone(t.status)}>{jobStatusLabel(t.status)}</StatusBadge>
+                    </td>
+                    <td className="px-3 py-3">
+                      {t.status === "failed" && (
+                        <button
+                          onClick={() => onRetry(t.id)}
+                          className="inline-flex h-7 items-center gap-1 rounded border border-border bg-white px-2 text-[11px] font-bold text-graphite hover:bg-secondary"
+                        >
+                          <RefreshCw className="h-3 w-3" /> 重试
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+                {data.targets.length === 0 && (
+                  <tr><td colSpan={4} className="px-5 py-10 text-center text-xs text-muted-foreground">该任务暂无目标（可能创建时无可用账号）</td></tr>
+                )}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </aside>
+    </div>
   );
 }
