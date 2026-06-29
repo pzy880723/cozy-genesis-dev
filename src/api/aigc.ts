@@ -1,4 +1,12 @@
 import { mock } from "./client";
+import { assetsApi } from "./assets";
+import {
+  ALL_CATEGORY,
+  brandHighlight,
+  getBrandProfile,
+  type OneClickVideoType,
+} from "./brand";
+import type { Asset } from "@/types";
 
 export type GenerateCopyInput = {
   assetIds: string[];
@@ -54,6 +62,54 @@ export type RenderJob = {
 
 const SAMPLE_VIDEO = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4";
 const PIC = (seed: string) => `https://picsum.photos/seed/${encodeURIComponent(seed)}/600/800`;
+
+export const ONECLICK_MAX_REFS = 9;
+
+export type OneClickPickInput = {
+  shopId: string;
+  types: OneClickVideoType[];
+  category: string;
+  max?: number;
+};
+
+export type OneClickPickResult = {
+  assets: Asset[];
+  shortage?: string;
+};
+
+export type OneClickGenerateInput = {
+  shopId: string;
+  types: OneClickVideoType[];
+  category: string;
+  assetIds: string[];
+  aspect: string;
+  modelId: string;
+};
+
+const TYPE_TAG_HINTS: Record<OneClickVideoType, string[]> = {
+  store_tour: ["探店", "门店", "门头", "环境"],
+  new_arrival: ["新品", "上新", "上架", "新款"],
+  store_ambience: ["氛围", "环境", "灯光", "空镜"],
+  brand_intro: ["品牌", "IP", "主视觉"],
+  activity: ["活动", "海报", "周末", "促销"],
+  customer_review: ["顾客", "试穿", "好评", "评价"],
+};
+
+function scoreAsset(a: Asset, types: OneClickVideoType[], category: string): number {
+  const tagText = [a.title, ...(a.tags ?? []), a.category ?? ""].join(" ").toLowerCase();
+  let s = 0;
+  for (const t of types) {
+    for (const hint of TYPE_TAG_HINTS[t]) {
+      if (tagText.includes(hint.toLowerCase())) s += 3;
+    }
+  }
+  if (category && category !== ALL_CATEGORY) {
+    if (tagText.includes(category.toLowerCase())) s += 4;
+  }
+  // 偏好有缩略图的
+  if (a.thumbnailUrl) s += 1;
+  return s;
+}
 
 export const aigcApi = {
   generateCopy: async (_input: GenerateCopyInput): Promise<GeneratedCopy> => {
@@ -169,5 +225,59 @@ export const aigcApi = {
       },
       200,
     );
+  },
+
+  // 一键自动挑图：只从「上传」原图中按类型 + 品类打分取 Top N（最多 9）。
+  pickAutoAssets: async (input: OneClickPickInput): Promise<OneClickPickResult> => {
+    const max = Math.min(input.max ?? ONECLICK_MAX_REFS, ONECLICK_MAX_REFS);
+    const all = await assetsApi.list({
+      shopId: input.shopId,
+      kind: "image",
+      source: "upload",
+      limit: 120,
+    });
+    const scored = all
+      .map((a) => ({ a, s: scoreAsset(a, input.types, input.category) }))
+      // 让没匹配到 tag 的也能进来（保证有图），匹配的优先
+      .sort((x, y) => y.s - x.s);
+    const picked = scored.slice(0, max).map((x) => x.a);
+    const shortage =
+      picked.length < max
+        ? `仅找到 ${picked.length} 张上传图，可继续生成，或先去素材库上传更多基础图。`
+        : undefined;
+    return mock({ assets: picked, shortage }, 500);
+  },
+
+  // 一键生成：脚本 → 分镜 → 渲染任务，全部串起来。
+  oneClickGenerate: async (
+    input: OneClickGenerateInput,
+  ): Promise<{ jobId: string; script: Script; brief: VideoBrief }> => {
+    const profile = getBrandProfile(input.shopId);
+    const highlight = brandHighlight(profile, input.types, input.category);
+    const primaryType = input.types[0] ?? "store_tour";
+    const brief: VideoBrief = {
+      shopId: input.shopId,
+      refAssetIds: input.assetIds,
+      character: null,
+      vtype: primaryType,
+      style: "lively",
+      duration: 15,
+      aspect: input.aspect,
+      highlight,
+      briefDigest: `一键出片 · ${profile.brandName} · ${input.types.join("+")} · ${input.category}`,
+    };
+    const script = await aigcApi.generateVideoScript(brief);
+    const sb = await aigcApi.generateStoryboard({ scenes: script.scenes });
+    const finalScript: Script = { title: script.title, scenes: sb.scenes };
+    const { jobId } = await aigcApi.submitRenderJob({
+      shopId: input.shopId,
+      script: finalScript,
+      brief,
+      modelId: input.modelId,
+      resolution: "720p",
+      realism: "real",
+      strategy: "one_shot",
+    });
+    return { jobId, script: finalScript, brief };
   },
 };

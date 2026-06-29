@@ -18,6 +18,7 @@ import { Route as AuthenticatedAssetsRouteImport } from './routes/_authenticated
 import { Route as AuthenticatedAccountsRouteImport } from './routes/_authenticated/accounts'
 import { Route as AuthenticatedAigcIndexRouteImport } from './routes/_authenticated/aigc.index'
 import { Route as AuthenticatedAigcVideoRouteImport } from './routes/_authenticated/aigc.video'
+import { Route as AuthenticatedAigcOneclickRouteImport } from './routes/_authenticated/aigc.oneclick'
 import { Route as AuthenticatedAigcImageRouteImport } from './routes/_authenticated/aigc.image'
 import { Route as AuthenticatedAigcCopyRouteImport } from './routes/_authenticated/aigc.copy'
 
@@ -65,6 +66,12 @@ const AuthenticatedAigcVideoRoute = AuthenticatedAigcVideoRouteImport.update({
   path: '/aigc/video',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedAigcOneclickRoute =
+  AuthenticatedAigcOneclickRouteImport.update({
+    id: '/aigc/oneclick',
+    path: '/aigc/oneclick',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedAigcImageRoute = AuthenticatedAigcImageRouteImport.update({
   id: '/aigc/image',
   path: '/aigc/image',
@@ -85,6 +92,7 @@ export interface FileRoutesByFullPath {
   '/settings': typeof AuthenticatedSettingsRoute
   '/aigc/copy': typeof AuthenticatedAigcCopyRoute
   '/aigc/image': typeof AuthenticatedAigcImageRoute
+  '/aigc/oneclick': typeof AuthenticatedAigcOneclickRoute
   '/aigc/video': typeof AuthenticatedAigcVideoRoute
   '/aigc/': typeof AuthenticatedAigcIndexRoute
 }
@@ -97,6 +105,7 @@ export interface FileRoutesByTo {
   '/': typeof AuthenticatedIndexRoute
   '/aigc/copy': typeof AuthenticatedAigcCopyRoute
   '/aigc/image': typeof AuthenticatedAigcImageRoute
+  '/aigc/oneclick': typeof AuthenticatedAigcOneclickRoute
   '/aigc/video': typeof AuthenticatedAigcVideoRoute
   '/aigc': typeof AuthenticatedAigcIndexRoute
 }
@@ -111,6 +120,7 @@ export interface FileRoutesById {
   '/_authenticated/': typeof AuthenticatedIndexRoute
   '/_authenticated/aigc/copy': typeof AuthenticatedAigcCopyRoute
   '/_authenticated/aigc/image': typeof AuthenticatedAigcImageRoute
+  '/_authenticated/aigc/oneclick': typeof AuthenticatedAigcOneclickRoute
   '/_authenticated/aigc/video': typeof AuthenticatedAigcVideoRoute
   '/_authenticated/aigc/': typeof AuthenticatedAigcIndexRoute
 }
@@ -125,6 +135,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/aigc/copy'
     | '/aigc/image'
+    | '/aigc/oneclick'
     | '/aigc/video'
     | '/aigc/'
   fileRoutesByTo: FileRoutesByTo
@@ -137,6 +148,7 @@ export interface FileRouteTypes {
     | '/'
     | '/aigc/copy'
     | '/aigc/image'
+    | '/aigc/oneclick'
     | '/aigc/video'
     | '/aigc'
   id:
@@ -150,6 +162,7 @@ export interface FileRouteTypes {
     | '/_authenticated/'
     | '/_authenticated/aigc/copy'
     | '/_authenticated/aigc/image'
+    | '/_authenticated/aigc/oneclick'
     | '/_authenticated/aigc/video'
     | '/_authenticated/aigc/'
   fileRoutesById: FileRoutesById
@@ -224,6 +237,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAigcVideoRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/aigc/oneclick': {
+      id: '/_authenticated/aigc/oneclick'
+      path: '/aigc/oneclick'
+      fullPath: '/aigc/oneclick'
+      preLoaderRoute: typeof AuthenticatedAigcOneclickRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/aigc/image': {
       id: '/_authenticated/aigc/image'
       path: '/aigc/image'
@@ -249,6 +269,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
   AuthenticatedAigcCopyRoute: typeof AuthenticatedAigcCopyRoute
   AuthenticatedAigcImageRoute: typeof AuthenticatedAigcImageRoute
+  AuthenticatedAigcOneclickRoute: typeof AuthenticatedAigcOneclickRoute
   AuthenticatedAigcVideoRoute: typeof AuthenticatedAigcVideoRoute
   AuthenticatedAigcIndexRoute: typeof AuthenticatedAigcIndexRoute
 }
@@ -261,6 +282,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
   AuthenticatedAigcCopyRoute: AuthenticatedAigcCopyRoute,
   AuthenticatedAigcImageRoute: AuthenticatedAigcImageRoute,
+  AuthenticatedAigcOneclickRoute: AuthenticatedAigcOneclickRoute,
   AuthenticatedAigcVideoRoute: AuthenticatedAigcVideoRoute,
   AuthenticatedAigcIndexRoute: AuthenticatedAigcIndexRoute,
 }
