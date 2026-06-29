@@ -1,144 +1,83 @@
+# 全局 UI 改版方案
 
-# BOOMER 帮我拍 · 全局修改方案
+锁定的设计语言（你刚选的）：
+- 配色：Charcoal & Ember — `#1a1a1a / #2d2d2d / #4a4a4a / #e85d3a`
+- 字体：DM Serif Display（标题，自托管 @fontsource）+ Fira Sans（正文）
+- 结构：Dashboard 多面板（顶栏 + 侧栏 + 内容多卡片）
 
-读完 `BOOMER-OFF-品牌完整介绍.md` 后做的三件事：
-1. 把「部门帮我拍」全部改名「BOOMER 帮我拍」
-2. 视频类型由多选改单选
-3. 倾向品类按品牌文档第十二节铺齐，并把品牌资料、铁律、视觉风格、必拍镜头沉淀进系统，作为 AI 一键出片的"设计依据"
-
----
-
-## 一、命名与入口
-
-- 入口卡（`aigc.index.tsx`）：标题 **BOOMER 帮我拍**，副标题「选店铺 → 选类型 → 一键 15 秒成片，脚本、角色都按 BOOMER·OFF 品牌铁律生成」
-- `/aigc/video` 顶部提示条：「想更快？试试 BOOMER 帮我拍 →」
-- `aigc.oneclick.tsx` 页头标题、面包屑、按钮文案全部替换为「BOOMER 帮我拍」
-- 提交按钮文案：`✨ 一键生成 15s 成片`
-
-> 路由路径仍保留 `/aigc/oneclick`（仅展示文案变更，避免改路由/外链）。
+下面三个方向只在**构图密度 / 节奏 / 强调点 / 动效**上不同；token 与字体一致。请选择 1 个，我会按它做**全局**改版（AppShell + 所有路由：工作台、AIGC、素材库、发布、账号、设置、BOOMER 帮我拍）。
 
 ---
 
-## 二、视频类型：多选 → 单选
+## 方向 A · "Editorial Console"（杂志感控制台）
 
-`src/api/brand.ts` 的 `ONECLICK_VIDEO_TYPES` 收敛到品牌文档第十节"四类必做"，与脚本生成 vtype 对齐：
+**气质**：像翻一本黑色封面的设计年鉴。大量留白，强排版，DM Serif 大字号做"栏目页"。
+**做法**：
+- 顶部加一条 **64px Editorial Header**：左侧巨大 serif 路由名 + 右侧细灰色面包屑/Kicker（`AIGC / VIDEO / ONE-CLICK`，等宽小写）
+- 主体改为 **12 栏栅格**，卡片不再是统一圆角白卡，而是 **细 1px 边 + 无阴影 + 大间距**（gap-8），分隔靠 hairline 而不是色块
+- Step Panel 改成 **"01 · 02 · 03" 的左侧数字标号**（DM Serif 48px，橙色）+ 右侧内容，去掉 Panel 外框
+- 强调色只用在**单一动作按钮**和**当前进度数字**，其余全灰阶
+- 微动效：路由切换时标题做 8px y-fade（200ms），按钮 hover 仅描边变橙
 
-```text
-⦿ 探店 store_tour          ← 主推，默认
-○ 产品展示 product_showcase
-○ 店铺氛围 store_ambience
-○ 新品上架 new_arrival
-```
-
-- 组件用 `RadioGroup`，state 由 `OneClickVideoType[]` 改为 `OneClickVideoType`
-- 至少 1 个的校验逻辑删除（单选必有值，默认 `store_tour`）
-- `pickAutoAssets` / `oneClickGenerate` / `brandHighlight` 入参 `types: OneClickVideoType[]` 改为 `type: OneClickVideoType`
-- `TYPE_TAG_HINTS` 同步加上 `product_showcase` 关键词（正面/细节/微距/上身）
+**适合**：你想要"很有调性、像作品集"的感觉，截图截下来好看。
+**代价**：信息密度下降约 20%，长列表需要滚动更多。
 
 ---
 
-## 三、倾向品类：按品牌文档第十二节铺齐
+## 方向 B · "Dense Operator"（高密度操作台 · 推荐）
 
-文档第十二节列出 7 大类，作为全店通用的「品类池」，店铺 `categories` 是其子集。
+**气质**：Linear / Retool / Bloomberg 的混血。一切都在一屏内，键盘可达，专业人士工具。
+**做法**：
+- 侧栏从 240px 收窄到 **220px**，加 **可折叠到 56px** 的图标态；底部加快捷键提示
+- 顶栏改为 **48px**（更薄），加 **全局 Command Palette**（`⌘K`）入口替换搜索框
+- 主区改 **三段式**：左 1/4 = 步骤目录（sticky）+ 中 2/4 = 当前 Step + 右 1/4 = 实时预览/日志/脚本
+- 表单控件统一 **32px 高**、`Fira Sans 12px`、tabular-nums；橙色仅出现在**主要 CTA、当前 Step badge、进度条**
+- BOOMER 一键页：左侧步骤树常驻，右侧 9 宫格选图+脚本+视频预览并列；不再上下长滚
+- 微动效：所有面板 enter 用 120ms 平移+淡入；进度条用 stripe shimmer
 
-`brand.ts` 新增常量：
-
-```text
-BOOMER_CATEGORY_POOL = [
-  "全品类",
-  "日本中古瓷器",
-  "趣味玩具",
-  "IP 玩偶",
-  "黑胶唱片",
-  "中古数码",
-  "中古杂货",
-  "欧洲中古小物",
-]
-```
-
-UI（Step 03）：
-- 来源 = 当前店铺 `categories` ∪ `BOOMER_CATEGORY_POOL`，加「全品类」置首
-- 单选 chip，默认值：店铺 `primaryCategory`，否则「全品类」
-- 文案：「想偏向哪一类？AI 会优先取该品类的素材并往脚本里带。」
+**适合**：你说"AIGC 工作台"的本质——每天高频使用、多步骤、要快。
+**代价**：首次上手需要 1 次引导。
 
 ---
 
-## 四、品牌资料对齐 BOOMER·OFF（删掉"瓷器天堂/玩具天堂"假数据）
+## 方向 C · "Atelier Dark"（暗色工作室）
 
-`brand.ts` 的 `PROFILES` 重写为品牌文档里真实存在的店铺：
+**气质**：默认深色 `#1a1a1a` 主背景，内容卡片 `#2d2d2d`，像 Figma + Runway 的暗房；橙色发光更亮眼。
+**做法**：
+- 主背景翻黑，正文用 `#e8e6e1` 暖白；卡片为深炭色带 1px `#3a3a3a` 边
+- 所有图片/素材在深背景上自带"画廊感"，9 宫格预览特别出彩
+- 顶栏改为 **半透明毛玻璃**（`backdrop-blur`），随滚动出现 hairline
+- CTA 按钮：橙色 + 6px 外发光（`shadow: 0 0 0 1px #e85d3a, 0 8px 24px -8px #e85d3a66`）
+- 进度/状态用霓虹小点（绿/橙/灰），不用大色块
+- 提供**亮/暗双主题切换**（顶栏右上），亮主题就是方向 B 的灰白版
 
-| shopId | brandName | brandIntro 摘要 | brandTone | categories | primaryCategory |
-| --- | --- | --- | --- | --- | --- |
-| `shop_zxth` | BOOMER·OFF · 上海中信泰富店 | 南京西路 B1 旗舰，无门面通透铺位，日欧中古杂货寻宝乐园，6.9 元起 | 克制 · 有质感 · 像随手记 | 日本中古瓷器 / 趣味玩具 / IP 玩偶 / 黑胶唱片 / 中古数码 / 中古杂货 / 欧洲中古小物 | 日本中古瓷器 |
-| `shop_mh728` | BOOMER·OFF · 闵行 728 总部 | 总部及货品中转中心（非零售），用于内容/培训素材 | 克制 · 内部 | 全品类 | — |
-| `hq` | BOOMER·OFF（总部） | 国内首家标准化中古连锁，30,000+ SKU、6.9 元起、平价中古杂货铺 | 克制 · 有质感 · 像随手记 | 全品类 | — |
-
-> 删除原 mock 里的 `南京新街口` `静安店` 与潮牌口径，以及 `瓷器天堂` / `玩具天堂` 这两条与品牌不符的资料。
-
-`brandHighlight()` 在原拼装基础上**注入品牌铁律**，让脚本生成端默认守规：
-
-```text
-【品牌】BOOMER·OFF（标准化中古连锁）
-【语调】克制、有质感、像随手记
-【品牌介绍】… (来自 brandIntro)
-【本片类型】探店
-【倾向品类】日本中古瓷器
-【内容铁律】100% 简体中文；不编造价格/年代/产地/品牌/材质；
-  禁词：主播/直播间/保真/秒杀/全网最低/拍卖行级别/独家供应商；
-  称呼：你 / 您 / 店员；不用"宝宝们/家人们"；不喊话、不带货式叫卖。
-【视觉风格】真人写实纪实风；暖光/电影级三点布光；中焦+微距；胶片颗粒。
-【硬约束】商场内门店，无门框、无户外；探店类首镜必须是门头。
-```
+**适合**：内容（图片/视频）是主角的产品，发布前预览体验最好。
+**代价**：长时间看表格略累；需要重做所有 token 的暗色对版。
 
 ---
 
-## 五、自动选图规则细化
+## 技术改造范围（任选一个方向都一样）
 
-`pickAutoAssets`：
-- 维持 `source==='upload'` 硬过滤、最多 9 张
-- 探店类（`store_tour`）首位强制塞「门头/招牌/门店入口」标签的图（命中 `门头/招牌/入口/BOOMER` 关键字），与文档"门头必为第一镜"对齐；命中不到则面板顶部出现提示「未找到门头图，建议补拍后再生成」
-- `TYPE_TAG_HINTS` 调整为品牌词：探店→门头/货架/翻筐/陈列；产品展示→正面/细节/微距；店铺氛围→暖光/霓虹/空镜；新品上架→新到/标签/多角度
-
----
-
-## 六、设置区与文案
-
-- 模型：⦿ Fast（默认） ○ PRO
-- 画幅：⦿ 9:16  ○ 1:1  ○ 16:9（默认 9:16，对齐抖音/小红书/视频号主流量）
-- 时长：固定 15s（保留说明「CDS 单段上限」）
-- 顶部展示「品牌资料预览卡」：brandName / brandTone / brandIntro 前两行 [展开]，底部小字：「AI 会按 BOOMER·OFF 品牌铁律设计画面、旁白与角色」
-
----
-
-## 七、改动清单
-
-- 修改：`src/api/brand.ts`
-  - `ONECLICK_VIDEO_TYPES` 改为 4 项；新增 `BOOMER_CATEGORY_POOL`
-  - `OneClickVideoType` 单值化；`brandHighlight(profile, type, category)` 签名调整 + 注入铁律段
-  - `PROFILES` 按 BOOMER·OFF 真实门店重写，删除瓷器/玩具天堂
-  - 新增 `buildCategoryOptions(profile)` = 池 ∪ 店铺 categories，去重置「全品类」置首
-- 修改：`src/api/aigc.ts`
-  - `OneClickPickInput.types` → `type`；`OneClickGenerateInput.types` → `type`
-  - `pickAutoAssets`：单类型评分 + 门头优先
-  - `oneClickGenerate`：briefDigest/highlight 用单类型
-  - `TYPE_TAG_HINTS` 关键词替换
-- 修改：`src/routes/_authenticated/aigc.oneclick.tsx`
-  - 全文案改「BOOMER 帮我拍」
-  - Step 02 改 `RadioGroup` 单选
-  - Step 03 用 `buildCategoryOptions`
-  - 移除多选校验
-- 修改：`src/routes/_authenticated/aigc.index.tsx`：入口卡标题/副标题/icon
-- 修改：`src/routes/_authenticated/aigc.video.tsx`：顶部提示条改名
-
-> 不动：路由路径、`generateVideoScript` 接口签名、`pollRenderJob`、UI 组件库。
+1. **Token 重写** `src/styles.css`
+   - 新增 `--ember`, `--charcoal-1/2/3`, `--ink`, `--hairline`, `--shadow-elegant`
+   - `@theme inline` 映射到 shadcn 的 `--background / --foreground / --primary / --border / --muted` 等
+   - 用 `oklch()` 表达，保证亮暗一致
+2. **字体加载**
+   - `bun add @fontsource/dm-serif-display @fontsource-variable/fira-sans`
+   - 在 `src/main.tsx` 或 `__root.tsx` 引入；`@theme` 设 `--font-serif`、`--font-sans`
+3. **AppShell 重做** `src/components/app/AppShell.tsx`
+   - 侧栏 / 顶栏 / Command Palette（仅 B、C）/ 主题切换（仅 C）
+4. **共享组件 Panel/PageHeader 升级** `src/components/app/PageHeader.tsx`
+   - 增加 `variant: "editorial" | "dense" | "atelier"`，全站统一调用
+5. **逐页适配** 6 个路由 + BOOMER 一键页
+   - 主要改 className，不动业务逻辑
+6. **shadcn 组件 variant** 增加 `button` 的 `ember`/`ghost-hairline`、`badge` 的 `kicker`/`neon`
+7. **不动的内容**：路由结构、API、所有业务文案/规则、BOOMER 品牌铁律
 
 ---
 
-## 八、验收
+## 我需要你回答
 
-1. 入口卡显示「BOOMER 帮我拍」，旧"部门帮我拍"全站搜索 0 命中
-2. 视频类型为 4 选 1 单选，默认「探店」
-3. 倾向品类下拉包含 BOOMER 7 大类 + 「全品类」+ 店铺自有 categories（去重）
-4. 切换到「上海中信泰富店」时品牌资料卡显示真实 BOOMER·OFF 文案
-5. 探店类一键挑图后，第一张是门头/招牌图；没有时顶部出现补拍提示
-6. 生成出的脚本旁白不含禁词（主播 / 宝宝们 / 全网最低 / 秒杀 …），首镜为门头
+请回复 **A / B / C** 任一个（或"B 但用 C 的暗色"这种组合也行），我直接进入改造。
+
+如果你希望我先**渲染 3 张高保真静态预览图**让你眼见为实，再说一句"先出图"，我会用图像生成一张接一张地出，然后再动代码。
