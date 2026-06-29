@@ -7,6 +7,18 @@ export type GenerateCopyInput = {
   notes?: string;
 };
 
+export type VideoBrief = {
+  shopId: string;
+  refAssetIds: string[];
+  character: string | null;
+  vtype: string;
+  style: string;
+  duration: number;
+  aspect: string;
+  highlight: string;
+  briefDigest: string;
+};
+
 export type GeneratedCopy = {
   title: string;
   body: string;
@@ -75,6 +87,35 @@ export const aigcApi = {
       700,
     ),
 
+  generateVideoScript: async (input: VideoBrief): Promise<Script> => {
+    const sceneCount = input.duration <= 15 ? 3 : input.duration <= 30 ? 4 : input.duration <= 45 ? 5 : 6;
+    const per = Math.max(3, Math.round(input.duration / sceneCount));
+    const visualsByType: Record<string, string[]> = {
+      store_tour: ["门店门头推镜", "品牌墙 + IP 角色", "店内陈列环绕", "顾客试穿特写", "店员介绍新品", "结尾活动卡 + 地址"],
+      product_showcase: ["产品开箱特写", "材质细节微距", "上身/使用场景", "搭配组合演示", "对比同类竞品", "结尾购买引导"],
+      store_ambience: ["门店外景日落", "灯光氛围空镜", "顾客自然互动", "员工服务细节", "音乐 + 慢镜头", "品牌 Logo 收尾"],
+      new_arrival: ["新品包装拆封", "首发吊牌特写", "上身多角度", "搭配灵感推荐", "限时活动卡", "门店地址收尾"],
+    };
+    const visuals = visualsByType[input.vtype] ?? visualsByType.store_tour;
+    const scenes: Scene[] = Array.from({ length: sceneCount }, (_, i) => {
+      const start = i * per;
+      const end = Math.min(input.duration, start + per);
+      const mm = (n: number) => `${String(Math.floor(n / 60)).padStart(2, "0")}:${String(n % 60).padStart(2, "0")}`;
+      return {
+        id: i + 1,
+        time: `${mm(start)}-${mm(end)}`,
+        visual: visuals[i] ?? `镜头 ${i + 1}`,
+        voice: i === sceneCount - 1
+          ? (input.highlight || "周末到店有礼，记得来打卡。")
+          : `${input.style === "playful" ? "嘿，" : ""}${visuals[i] ?? "镜头"}，配合${input.style}节奏。`,
+      };
+    });
+    return mock(
+      { title: `${input.vtype} · ${input.aspect} · ${input.duration}s 脚本`, scenes },
+      700,
+    );
+  },
+
   generateBrief: async (input: { userMsg: string; turn: number }): Promise<BriefTurn> => {
     const replies = [
       { kind: "ask" as const, content: "好。想突出门店氛围、新品、还是活动？大概多长？" },
@@ -100,6 +141,7 @@ export const aigcApi = {
   submitRenderJob: async (_input: {
     shopId: string;
     script: Script;
+    brief: VideoBrief;
     modelId: string;
     resolution: string;
     realism: string;

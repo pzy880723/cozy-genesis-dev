@@ -5,7 +5,7 @@ import { AppShell } from "@/components/app/AppShell";
 import { PageHeader, Panel } from "@/components/app/PageHeader";
 import { shopsApi } from "@/api/shops";
 import { assetsApi } from "@/api/assets";
-import { aigcApi, type BriefTurn, type Script, type RenderJob, type RenderPhase } from "@/api/aigc";
+import { aigcApi, type BriefTurn, type Script, type RenderJob, type RenderPhase, type VideoBrief } from "@/api/aigc";
 import {
   ArrowLeft, Sparkles, Send, RefreshCw, Loader2, ImagePlus, X, CheckCircle2, AlertTriangle, Wand2, Film,
 } from "lucide-react";
@@ -108,7 +108,7 @@ function VideoFlow() {
     setScriptBusy(true);
     setScript(null);
     try {
-      const r = await aigcApi.generateScript({ assetIds: [], scope: shopId, platforms: [], notes: highlight });
+      const r = await aigcApi.generateVideoScript(buildBrief());
       const s: Script = { title: r.title, scenes: r.scenes.map((sc) => ({ ...sc })) };
       setScript(s);
       // auto-storyboard
@@ -132,9 +132,21 @@ function VideoFlow() {
   const submitRender = async () => {
     if (!script || !shopId) return;
     const total = script.scenes.length;
-    const { jobId } = await aigcApi.submitRenderJob({ shopId, script, modelId, resolution, realism, strategy });
+    const { jobId } = await aigcApi.submitRenderJob({ shopId, script, brief: buildBrief(), modelId, resolution, realism, strategy });
     setJob({ id: jobId, phase: "queued", progress: { done: 0, total }, startedAt: Date.now() });
   };
+
+  const buildBrief = (): VideoBrief => ({
+    shopId,
+    refAssetIds: refImages,
+    character,
+    vtype,
+    style,
+    duration,
+    aspect,
+    highlight,
+    briefDigest: brief.filter((m) => m.kind === "draft_script").map((m) => m.content).join("\n") || brief.map((m) => `${m.role}: ${m.content}`).join("\n"),
+  });
 
   const failJobForDemo = () => {
     if (!job) return;
