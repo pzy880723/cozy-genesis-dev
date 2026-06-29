@@ -20,6 +20,7 @@ import { Route as AuthenticatedAccountsRouteImport } from './routes/_authenticat
 import { Route as AuthenticatedAigcIndexRouteImport } from './routes/_authenticated/aigc.index'
 import { Route as AuthenticatedAigcVideoRouteImport } from './routes/_authenticated/aigc.video'
 import { Route as AuthenticatedAigcImageRouteImport } from './routes/_authenticated/aigc.image'
+import { Route as AuthenticatedAigcCopyRouteImport } from './routes/_authenticated/aigc.copy'
 
 const AuthRoute = AuthRouteImport.update({
   id: '/auth',
@@ -75,6 +76,11 @@ const AuthenticatedAigcImageRoute = AuthenticatedAigcImageRouteImport.update({
   path: '/aigc/image',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedAigcCopyRoute = AuthenticatedAigcCopyRouteImport.update({
+  id: '/aigc/copy',
+  path: '/aigc/copy',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
@@ -84,6 +90,7 @@ export interface FileRoutesByFullPath {
   '/automation': typeof AuthenticatedAutomationRoute
   '/publish': typeof AuthenticatedPublishRoute
   '/settings': typeof AuthenticatedSettingsRoute
+  '/aigc/copy': typeof AuthenticatedAigcCopyRoute
   '/aigc/image': typeof AuthenticatedAigcImageRoute
   '/aigc/video': typeof AuthenticatedAigcVideoRoute
   '/aigc/': typeof AuthenticatedAigcIndexRoute
@@ -96,6 +103,7 @@ export interface FileRoutesByTo {
   '/publish': typeof AuthenticatedPublishRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/': typeof AuthenticatedIndexRoute
+  '/aigc/copy': typeof AuthenticatedAigcCopyRoute
   '/aigc/image': typeof AuthenticatedAigcImageRoute
   '/aigc/video': typeof AuthenticatedAigcVideoRoute
   '/aigc': typeof AuthenticatedAigcIndexRoute
@@ -110,6 +118,7 @@ export interface FileRoutesById {
   '/_authenticated/publish': typeof AuthenticatedPublishRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
+  '/_authenticated/aigc/copy': typeof AuthenticatedAigcCopyRoute
   '/_authenticated/aigc/image': typeof AuthenticatedAigcImageRoute
   '/_authenticated/aigc/video': typeof AuthenticatedAigcVideoRoute
   '/_authenticated/aigc/': typeof AuthenticatedAigcIndexRoute
@@ -124,6 +133,7 @@ export interface FileRouteTypes {
     | '/automation'
     | '/publish'
     | '/settings'
+    | '/aigc/copy'
     | '/aigc/image'
     | '/aigc/video'
     | '/aigc/'
@@ -136,6 +146,7 @@ export interface FileRouteTypes {
     | '/publish'
     | '/settings'
     | '/'
+    | '/aigc/copy'
     | '/aigc/image'
     | '/aigc/video'
     | '/aigc'
@@ -149,6 +160,7 @@ export interface FileRouteTypes {
     | '/_authenticated/publish'
     | '/_authenticated/settings'
     | '/_authenticated/'
+    | '/_authenticated/aigc/copy'
     | '/_authenticated/aigc/image'
     | '/_authenticated/aigc/video'
     | '/_authenticated/aigc/'
@@ -238,6 +250,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAigcImageRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/aigc/copy': {
+      id: '/_authenticated/aigc/copy'
+      path: '/aigc/copy'
+      fullPath: '/aigc/copy'
+      preLoaderRoute: typeof AuthenticatedAigcCopyRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
   }
 }
 
@@ -248,6 +267,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedPublishRoute: typeof AuthenticatedPublishRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
+  AuthenticatedAigcCopyRoute: typeof AuthenticatedAigcCopyRoute
   AuthenticatedAigcImageRoute: typeof AuthenticatedAigcImageRoute
   AuthenticatedAigcVideoRoute: typeof AuthenticatedAigcVideoRoute
   AuthenticatedAigcIndexRoute: typeof AuthenticatedAigcIndexRoute
@@ -260,6 +280,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedPublishRoute: AuthenticatedPublishRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
+  AuthenticatedAigcCopyRoute: AuthenticatedAigcCopyRoute,
   AuthenticatedAigcImageRoute: AuthenticatedAigcImageRoute,
   AuthenticatedAigcVideoRoute: AuthenticatedAigcVideoRoute,
   AuthenticatedAigcIndexRoute: AuthenticatedAigcIndexRoute,
