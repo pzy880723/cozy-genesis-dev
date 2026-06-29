@@ -171,6 +171,14 @@ function VideoFlow() {
         }
       />
 
+      <Link
+        to="/aigc/oneclick"
+        className="mb-3 flex items-center gap-2 rounded-md border border-amber-300/70 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800 hover:bg-amber-100"
+      >
+        <Sparkles className="h-3.5 w-3.5" />
+        想更快？试试「部门帮我拍 · 一键出片」 →
+      </Link>
+
       <div className="space-y-4">
         {/* Step 01 · 视频基础设置 */}
         <StepPanel num="01" title="视频基础设置" hint="类型 · 情绪 · 画风 · 时长 · 画幅 · 模型">
