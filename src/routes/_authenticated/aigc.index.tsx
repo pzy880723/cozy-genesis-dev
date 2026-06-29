@@ -14,7 +14,7 @@ function AigcHub() {
     <AppShell>
       <PageHeader title="AI 创作中心" description="一条主线把短视频从立意走到出片，图片 / 文案 / 素材库 / 分发协同。" />
 
-      {/* 一键出片 · 部门帮我拍 */}
+      {/* 一键出片 · BOOMER 帮我拍 */}
       <Link to="/aigc/oneclick" className="group mb-3 block">
         <section className="relative overflow-hidden rounded-lg border border-amber-300/70 bg-gradient-to-br from-amber-50 via-card to-card p-4 transition-all hover:border-amber-500">
           <div className="flex items-center gap-4">
@@ -23,9 +23,9 @@ function AigcHub() {
             </div>
             <div className="flex-1">
               <div className="text-[11px] font-black tracking-[0.18em] text-amber-700">SHORTCUT · 一键出片</div>
-              <h3 className="mt-0.5 text-base font-black text-foreground">部门帮我拍</h3>
+              <h3 className="mt-0.5 text-base font-black text-foreground">BOOMER 帮我拍</h3>
               <p className="mt-0.5 text-xs font-medium text-muted-foreground">
-                选店铺 → 勾类型 → 一键 15 秒成片，脚本、角色都交给 AI
+                选店铺 → 选类型 → 一键 15 秒成片，按 BOOMER·OFF 品牌铁律生成
               </p>
             </div>
             <ChevronRight className="h-4 w-4 text-amber-600 transition-transform group-hover:translate-x-0.5" />
