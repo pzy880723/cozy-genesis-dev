@@ -1,120 +1,123 @@
-## 目标
+# 接入 Worker 端到端闭环
 
-把「发布中心」从 mock 切到共享 Supabase 真库（项目 ref `narqwgwpqglathwtyevz`），手动发布 + 自动化任务 + 任务详情/重试/取消全部跑通。Worker 还没接，所以「执行」这一步只把任务写入 `social_publish_jobs / social_publish_targets`（status=`queued`，等 Worker 拉），UI 上能看到状态机和数据流。
+## 思路
 
-## 范围（一次做完）
+Worker 在腾讯云、由 Codex 维护，我（Cloud 端）只能保证「我这一侧按 `docs/WORKER_CONTRACT.md` 暴露的接口是对的」。所以这次拆成两块：
 
-1. 手动发布向导提交后真的入库
-2. 「发布中 / 发布记录」从真库读 + 5 秒轮询刷新
-3. 任务详情侧栏（点「查看详情」打开，按平台展示 target、重试单个 target、取消整任务）
-4. 自动化任务 CRUD（需要先在共享库加 `automation_tasks` 表）
-5. 账号选择真库 `social_accounts`，按平台 + 范围筛选
+1. **Cloud 端我直接做**：实现 Worker 拉单 / 回调 / 自动化 cron 三个 HTTP 端点，让 Worker 一接上就能跑通。
+2. **给 Codex 的清单**：把对接需要的 URL / Secret / Schema 整理成一份文档，你转给他。
 
-## 前置：共享库 migration（用户在 Genie 那边执行）
+如果 Codex 拍下来某些字段要调整，我再小步迭代。
 
-本项目不能调 `supabase--enable`，也碰不到共享 Supabase。下面这段 SQL 我会原样放在 `docs/migrations/2026-06-29-publish-center.sql`，请粘到共享库（narqwgwpqglathwtyevz）执行后再同步 `types.ts`。
+---
 
-```sql
--- 1. automation_tasks
-CREATE TABLE public.automation_tasks (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  name text NOT NULL,
-  scope_type text NOT NULL CHECK (scope_type IN ('hq','store','multi_store')),
-  shop_ids uuid[] NOT NULL DEFAULT '{}',
-  content_kind text NOT NULL DEFAULT 'image_text',
-  asset_source text NOT NULL DEFAULT 'mixed',
-  content_strategy text,
-  platforms text[] NOT NULL DEFAULT '{xhs,wechat_channels,douyin,kuaishou}',
-  daily_limit int NOT NULL DEFAULT 1,
-  run_times text[] NOT NULL DEFAULT '{10:00}',
-  failure_policy text NOT NULL DEFAULT 'retry_once',
-  status text NOT NULL DEFAULT 'enabled' CHECK (status IN ('enabled','paused','error')),
-  last_run_at timestamptz,
-  next_run_at timestamptz,
-  last_error text,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now(),
-  created_by uuid REFERENCES auth.users(id) ON DELETE SET NULL
-);
+## 一、Cloud 端要建/改的文件
 
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.automation_tasks TO authenticated;
-GRANT ALL ON public.automation_tasks TO service_role;
+### 新增
 
-ALTER TABLE public.automation_tasks ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "authenticated read" ON public.automation_tasks
-  FOR SELECT TO authenticated USING (true);
-CREATE POLICY "authenticated write" ON public.automation_tasks
-  FOR ALL TO authenticated USING (true) WITH CHECK (true);
-
--- 2. 给 social_publish_targets 补 Phase 2 列（契约 §1.2）
-ALTER TABLE public.social_publish_targets
-  ADD COLUMN IF NOT EXISTS claim_token uuid,
-  ADD COLUMN IF NOT EXISTS claim_expires_at timestamptz;
+```text
+src/lib/shared-admin.server.ts      共享库 service_role 客户端工厂（server-only）
+src/lib/worker-hmac.server.ts       HMAC 校验 + Bearer 校验工具
+src/routes/api/public/worker/cron-tick.ts    POST，Worker 主动拉单
+src/routes/api/public/worker/callback.ts     POST，Worker 回写 target/account 状态
+src/routes/api/public/cron/automation-tick.ts POST，由腾讯云定时器/pg_cron 每分钟打一次，按 run_times+daily_limit 创建 job
+docs/WORKER_HANDOFF.md              给 Codex 的对接说明（URL/Secret/示例 payload/错误码）
 ```
 
-执行完用户把更新的 `types.ts` 粘回来覆盖 `src/integrations/shared-db/types.ts`，我再做后续对齐。
+### 修改
 
-## 代码改动
+- `docs/migrations/2026-06-29-publish-center.sql`
+  - `social_publish_jobs` 加一个 `automation_task_id uuid` 列（自动化任务回链，用于按天计数）
+  - 加一个 trigger：每次 `social_publish_targets` 状态变化时，自动汇总写回 `social_publish_jobs.status`（success / partial_success / failed / running）
+- `src/api/publish.ts`：`create` 接受可选的 `automationTaskId` 并写入新列
+- `src/api/automation.ts`：`runNow` 改为通过 `publishApi.create` 时带上 `automationTaskId`
+- `src/routes/_authenticated/publish.tsx`：详情抽屉显示 `last_step / progress / 平台 post URL`（这些字段已经在 DB，前面只是没渲染）
 
-### `src/api/publish.ts`（重写）
+### 不动
 
-- `list({status?, limit?})`：`social_publish_jobs` join `social_publish_targets`（按 `created_at desc`），再 join `social_accounts(account_name, platform)`；映射成 `PublishJob`。
-- `create(input)`：
-    1. `social_publish_jobs.insert({ shop_id: input.shopIds[0] || 'hq', kind: input.contentType, title, body, tags, images, schedule_at, status:'queued' })` 拿 `jobId`。
-    2. 按 `platforms × shopIds` 选账号：查 `social_accounts where shop_id in (..) and platform in (..) and cookie_status='valid'`，每对 (platform, shop) 取第一条；缺账号的 (platform, shop) 收集成 `missing[]` 返回给前端提示。
-    3. 拿到的账号批量 `social_publish_targets.insert({ job_id, account_id, platform, status:'pending' })`。
-- `cancel(jobId)`：`update social_publish_jobs.status='cancelled'` + 把 `targets` 里非 success/failed 的全部置 `cancelled`。
-- `retryTarget(targetId)`：把单个 target 置 `pending`、`retry_count = retry_count + 1`、清 error。
-- `detail(jobId)`：单任务 + 全部 targets + 账号信息。
+- UI 视觉、其它页面、Worker 的实现都不动。
 
-### `src/api/accounts.ts`
+---
 
-- `list({shopIds?, platforms?})` 改读 `social_accounts`，映射 `cookie_status` → UI `status`。
-- 用于向导第 2 步显示「该范围 × 平台 可用账号 N 个，缺：xhs/南京店」。
+## 二、接口契约（与 WORKER_CONTRACT.md 对齐）
 
-### `src/api/automation.ts`（重写）
+### 1. `POST /api/public/worker/cron-tick` —— Worker 主动拉单
+- 鉴权：`Authorization: Bearer ${WORKER_SHARED_SECRET}`
+- Body：`{ max_batch?: number=10, platforms?: string[], worker_id: string }`
+- 行为：
+  - 用 service_role 把最多 `max_batch` 个 `status='pending'` 的 target 置为 `claimed`，写入 `worker_task_id / claim_token / claim_expires_at = now()+15min`
+  - 同时把对应 `social_publish_jobs.status` 升到 `running`（如果还是 queued）
+  - 返回每个 target 的完整 payload：job 主文案/标签、平台、`per_platform` 覆盖、`account_id`+`worker_account_key`、素材 URL（直接传 `marketing_assets.output_url`，先不签名；签名 URL 留 Phase 2）
+- 错误：401 / 400 / 500，统一 JSON
+- Cloudflare Worker 运行时安全：所有 `process.env.*` 读取都放在 handler 内
 
-- `list({status?})` 从 `automation_tasks` 读，映射成 `AutomationTask`。
-- `create(input)` 直接 insert；`update(id, patch)` 包含 `status='paused'/'enabled'`。
-- `runNow(id)`：目前没 Worker，先按任务策略合成一条 `social_publish_jobs`（pick 一条最新可用素材 + 一份默认文案），并 `update automation_tasks set last_run_at=now()`。Worker 接入后这步替换成"派单"。
+### 2. `POST /api/public/worker/callback` —— Worker 回调
+- 鉴权：HMAC，校验 `X-Worker-Timestamp`（±5min）+ `X-Worker-Signature = hex(hmac_sha256(secret, ts + "." + raw_body))`，timing-safe 比较
+- 支持 7 类事件（按 WORKER_CONTRACT §3）：
+  - `target.progress` → 仅 update `progress + last_step`
+  - `target.success` → `status=success` + `platform_post_id/url` + `finished_at`
+  - `target.failed` → 若 `retry_after_seconds` 给了且 `retry_count<3`：回 `pending` + retry_count+1；否则 `failed`
+  - `target.cancelled` → `status=cancelled`
+  - `account.bound / account.cookie_expired / account.checked` → 更新 `social_accounts.cookie_status` 等字段
+  - `login.scan_consumed` / `log` → 先记日志，不做实际动作
+- 任何 target 写完后再触一次 job 汇总（trigger 兜底，handler 也算一遍）
 
-### `src/types/index.ts`
+### 3. `POST /api/public/cron/automation-tick` —— 内部 cron
+- 鉴权：Bearer `WORKER_SHARED_SECRET`（同一份，方便 Codex 复用，也防匿名调用）
+- 调度方：腾讯云定时函数 / pg_cron / 任意 1 分钟级 scheduler，由你或 Codex 配置一次即可
+- 行为：
+  - 拉 `automation_tasks where status='enabled'`
+  - 对每个 task：当前 `HH:MM` 命中 `run_times` 中任一项的 ±2 分钟窗口
+  - 检查今日已生成 job 数（按 `automation_task_id + created_at >= today`），未达 `daily_limit` 才生成
+  - 调 `publishApi.create({ automationTaskId, ... })` 创建 job + targets，状态进 `queued/pending`，Worker 下一轮 cron-tick 自然领走
+  - 更新 `last_run_at / next_run_at`；失败按 `failure_policy` 处理（retry_once / pause / notify→只记 error）
 
-`PublishJob.status` 增加 `pending` 等真库枚举的映射；`PublishTarget.status` 同步。
+---
 
-### `src/routes/_authenticated/publish.tsx`
+## 三、密钥
 
-- `JobList`：useQuery 加 `refetchInterval: 5000`；空状态 + loading skeleton。每行「查看详情」打开右侧 Drawer。
-- 新增 `JobDetailDrawer`：
-    - 顶部任务标题、状态、计划时间。
-    - Targets 表格：账号名 / 平台 Badge / 状态 / 进度（progress + last_step）/ 错误。
-    - 操作：失败 target 显示「重试」；非终态任务显示「取消整个任务」。
-    - 操作后调用 mutation + `invalidateQueries(['publish-jobs'])`。
-- `Wizard` 提交时：成功后 toast 显示「已创建，N 个目标已排队，缺账号：…」并跳到「发布中」tab；失败显示错误。
-- 第 2 步选范围 + 平台后，实时调用 `accountsApi.list` 显示「将发布到 X 个账号」的预览。
-- 自动化抽屉收齐字段（scope_type/shop_ids/content_kind/asset_source/daily_limit/run_times/failure_policy），提交后真入库；保存后列表用 react-query 刷新而不是手工 setQueryData。
+| 名称 | 用途 | 当前状态 |
+|---|---|---|
+| `WORKER_SHARED_SECRET` | 三个端点的 Bearer + HMAC | ✅ 已生成（你点过了） |
+| `SHARED_SUPABASE_SERVICE_ROLE_KEY` | callback / cron-tick 写共享库（RLS=authenticated，匿名进不去） | ⏳ 需要你从共享库 Supabase Dashboard → API → service_role 复制 |
 
-### `src/mocks/data.ts` 与 `src/api/client.ts`
+第二个我会在切到 build 模式之后弹 add_secret 表单。
 
-继续保留（assets / aigc 还在用），不删，只是 publish / accounts / automation 不再从这里读。
+---
 
-## 验收脚本
+## 四、给 Codex 的对接清单（我会生成 docs/WORKER_HANDOFF.md）
 
-1. 登录 → /publish?mode=manual → 选 1 张素材、范围=总部 + 平台全选 → 生成文案 → 创建任务 → toast 提示。
-2. 切到「发布中」：看到刚刚的任务，5 秒后仍在；点详情，看到 4 个 target，状态 pending。
-3. 详情里点「取消整个任务」→ 状态变 cancelled，targets 全部 cancelled。
-4. 自动化 tab：新建任务，刷新页面后仍在；暂停/启用切换持久；点「立即执行」→ 「发布中」多一条新任务。
-5. 用 psql 校验：`select count(*) from social_publish_jobs where created_by = auth.uid();` 与 UI 一致。
+> Codex 看这一份就够，不用读 WORKER_CONTRACT 全文。
 
-## 不在本次范围
+1. **三个 URL**（部署后 stable host：`project--3a5a8bad-dfde-4d66-8cd6-9786e7370c8e.lovable.app`）
+   - 拉单：`POST https://{host}/api/public/worker/cron-tick`
+   - 回调：`POST https://{host}/api/public/worker/callback`
+   - 自动化 tick（如果 Worker 想代为触发）：`POST https://{host}/api/public/cron/automation-tick`
+2. **共享密钥**：`WORKER_SHARED_SECRET`，请你（用户）通过安全渠道发给 Codex
+3. **HMAC 算法**：`hex(hmac_sha256(secret, ts_unix_seconds + "." + raw_request_body))`
+4. **建议轮询频率**：cron-tick 每 15–30 秒一次；`claim_expires_at` 默认 15 分钟，超过未回报会重新进入 `pending`
+5. **回调 payload schema**：列出 7 类事件 + 必填字段 + 错误码字典
+6. **素材**：先直接 GET `marketing_assets.output_url`（Supabase Storage 公开 URL），Phase 2 改签名 URL
+7. **Codex 需要回我的问题**（写在文档末尾）：
+   - Worker 出口 IP 列表（若 Supabase 要白名单）？
+   - `social_accounts.worker_account_id` / `worker_account_key` 是否保留？还是只用 Cloud 主键 uuid？
+   - 真实跑通的平台/内容类型分别是什么阶段？
 
-- Worker 真实派单 / HMAC 回调路由（等 Codex 那边对齐）
-- 视频上传、封面生成、定时调度 cron
-- 账号扫码登录的真实流程（继续用现有占位）
-- UI 全站视觉改版（你说过先放下）
+---
 
-## 风险与回退
+## 五、验收脚本
 
-- 共享库 migration 没跑：`automation_tasks` 表不存在，自动化 tab 报错。降级方案：检测到 PostgREST `42P01` 时，前端继续显示 mock + 顶部红条提示「未执行 migration」。
-- `social_accounts` 没有 valid 账号：创建任务会全平台缺账号，向导第 4 步禁用「创建」按钮并提示去「账号中心」绑定。
+切到 build 之后我会跑：
+
+1. 手动发布一个 job → 库里 `jobs.status=queued`、`targets.status=pending`
+2. `curl -H "Authorization: Bearer $SECRET" .../cron-tick -d '{"worker_id":"test","max_batch":5}'` → 返回 target 列表 + 库里 `pending→claimed`
+3. `curl` 一个带 HMAC 的 `target.success` → 库里 `target.status=success`、`job.status=success`
+4. 创建一个 `automation_tasks(daily_limit=2, run_times=[当前分钟])`，打一次 `automation-tick` → 库里多出一条 `social_publish_jobs(automation_task_id=...)`
+5. 前端「发布中 / 发布记录 / 自动化任务」三个 tab 5 秒内能看到状态翻转
+
+## 范围之外（这次先不做）
+
+- Cloud→Worker 的反向推送（cancel / retry / account login QR）——等 Codex 给 Worker 出口 URL 后再加
+- 签名 URL（素材 URL 现在直传公开链接）
+- `worker_logs` 表
+- 视觉/UX 改动
