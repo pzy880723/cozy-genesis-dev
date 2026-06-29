@@ -17,6 +17,7 @@ import { Route as AuthenticatedPublishRouteImport } from './routes/_authenticate
 import { Route as AuthenticatedAutomationRouteImport } from './routes/_authenticated/automation'
 import { Route as AuthenticatedAssetsRouteImport } from './routes/_authenticated/assets'
 import { Route as AuthenticatedAccountsRouteImport } from './routes/_authenticated/accounts'
+import { Route as AuthenticatedAigcIndexRouteImport } from './routes/_authenticated/aigc.index'
 
 const AuthRoute = AuthRouteImport.update({
   id: '/auth',
@@ -57,6 +58,11 @@ const AuthenticatedAccountsRoute = AuthenticatedAccountsRouteImport.update({
   path: '/accounts',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedAigcIndexRoute = AuthenticatedAigcIndexRouteImport.update({
+  id: '/aigc/',
+  path: '/aigc/',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
@@ -66,6 +72,7 @@ export interface FileRoutesByFullPath {
   '/automation': typeof AuthenticatedAutomationRoute
   '/publish': typeof AuthenticatedPublishRoute
   '/settings': typeof AuthenticatedSettingsRoute
+  '/aigc/': typeof AuthenticatedAigcIndexRoute
 }
 export interface FileRoutesByTo {
   '/auth': typeof AuthRoute
@@ -75,6 +82,7 @@ export interface FileRoutesByTo {
   '/publish': typeof AuthenticatedPublishRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/': typeof AuthenticatedIndexRoute
+  '/aigc': typeof AuthenticatedAigcIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -86,6 +94,7 @@ export interface FileRoutesById {
   '/_authenticated/publish': typeof AuthenticatedPublishRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
+  '/_authenticated/aigc/': typeof AuthenticatedAigcIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -97,6 +106,7 @@ export interface FileRouteTypes {
     | '/automation'
     | '/publish'
     | '/settings'
+    | '/aigc/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/auth'
@@ -106,6 +116,7 @@ export interface FileRouteTypes {
     | '/publish'
     | '/settings'
     | '/'
+    | '/aigc'
   id:
     | '__root__'
     | '/_authenticated'
@@ -116,6 +127,7 @@ export interface FileRouteTypes {
     | '/_authenticated/publish'
     | '/_authenticated/settings'
     | '/_authenticated/'
+    | '/_authenticated/aigc/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -181,6 +193,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAccountsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/aigc/': {
+      id: '/_authenticated/aigc/'
+      path: '/aigc'
+      fullPath: '/aigc/'
+      preLoaderRoute: typeof AuthenticatedAigcIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
   }
 }
 
@@ -191,6 +210,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedPublishRoute: typeof AuthenticatedPublishRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
+  AuthenticatedAigcIndexRoute: typeof AuthenticatedAigcIndexRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
@@ -200,6 +220,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedPublishRoute: AuthenticatedPublishRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
+  AuthenticatedAigcIndexRoute: AuthenticatedAigcIndexRoute,
 }
 
 const AuthenticatedRouteRouteWithChildren =
