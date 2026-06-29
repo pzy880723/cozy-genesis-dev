@@ -1,61 +1,121 @@
-# /aigc/video 流程重排
+# 部门帮我拍 · 一键生成 15s 视频
 
-把 5 步流程拆成更线性的「先定调 → 再选料 → 后生成」三大阶段，严格按用户给出的顺序排布。
+在「AI 创作中心」加入口「部门帮我拍 · 一键出片」：用户只勾几下 → 自动选图 → AI 写脚本+设计角色 → 直出 15 秒成片。
 
-## 新步骤顺序
+## 入口与位置
+
+- `src/routes/_authenticated/aigc.index.tsx`：在「AI 短视频」旁加高亮卡片 **部门帮我拍**，副标题「一键自动选图 + 自动脚本 + 直出 15s」。
+- 新路由：`src/routes/_authenticated/aigc.oneclick.tsx`（`/aigc/oneclick`）。
+- `/aigc/video` 顶部加一条「想更快？试试一键出片 →」浅色提示条。
+
+## 品牌资料（设计依据，新增）
+
+视频脚本、画面调性、角色形象都基于「店铺品牌资料」生成，因此先在 Shop 上加几个后台字段，作为 AI 一键出片的素材：
+
+`src/types/index.ts` Shop 新增可选字段：
+- `brandName`：品牌名（如「瓷器天堂」）
+- `brandIntro`：品牌介绍（长文本，1–3 段）
+- `brandTone`：品牌语调（如「沉稳 / 国风 / 治愈」）
+- `categories: string[]`：在售品类标签池（如 `["瓷器","茶具","香器"]`）
+- `primaryCategory?: string`：主营品类（默认探店倾向）
+
+`src/api/shops.ts` + `src/mocks/data.ts`：补两家示例店铺的 brand 资料；`/settings` 页面顺手露一个「品牌资料」编辑卡（最小可用 textarea + 标签输入），让后台能改。
+
+> 一键出片调 `generateVideoScript` 时，把 `brandIntro / brandTone / 选中类型 / 倾向品类` 拼到 `highlight`（VideoBrief 已有该字段），不改接口签名。
+
+## 页面流程
 
 ```
-Step 01 · 视频基础设置（一屏内 5 个选项）
-  - 视频类型：探店 / 产品展示 / 店铺氛围 / 新品上架
-  - 情绪风格：稳重 / 活泼 / 激动 / 优雅 / 怀旧 / 俏皮
-  - 画风：真人写实 / 插画
-  - 时长：15 / 20 / 30 / 45 / 60s
-  - 画幅：9:16 / 1:1 / 16:9
-  - 渲染模型：PRO（Seedance 2 Pro）/ Fast（Seedance 2 Lite）
+┌── 01 归属店铺 ─────────────────────────────┐
+│ 门店下拉 + 品牌资料预览卡（只读）           │
+│   品牌名｜语调标签｜介绍前两行 [展开]       │
+│   底部小字：「AI 会按品牌资料设计画面与角色」│
+└────────────────────────────────────────────┘
 
-Step 02 · 参考图（最多 20 张）
-  - 门店选择（保留，必要的归属）
-  - 从素材库挑参考图，硬上限 20，超过禁选并提示
-  - 已选缩略图条 + 单张移除
+┌── 02 视频类型（多选，至少 1）────────────────┐
+│ ☐ 探店       ☐ 上新       ☐ 环境           │
+│ ☐ 品牌介绍   ☐ 活动       ☐ 顾客好评       │
+│ （都是大类型，不含细分品类）                │
+└────────────────────────────────────────────┘
 
-Step 03 · 主角选择
-  - 店员小 K / 顾客阿桃 / 暂不选（保持现有候选）
+┌── 03 倾向品类（单选，来自店铺 categories）──┐
+│ ⦿ 全品类  ○ 瓷器  ○ 玩具  ○ 黑胶          │
+│ ○ 数码    ○ 玩偶（动态来自店铺 categories）│
+│ 默认值：店铺 primaryCategory，否则「全品类」 │
+└────────────────────────────────────────────┘
 
-Step 04 · 立意对话（生成脚本）
-  - 与 AI 自然语言对话，多轮聊创意
-  - 「生成脚本」按钮：调用 generateVideoScript(buildBrief())
-  - 展示脚本标题 + 场景列表（先不带静帧）
+┌── 04 自动选图（最多 9 张）──────────────────┐
+│ [ 一键自动挑图 ]                            │
+│ 规则：source='upload'（排除 AI 生成）        │
+│      shop = 当前店铺                        │
+│      按 视频类型 + 倾向品类 给标签打分 Top 9│
+│ 选好后展示 9 格缩略图 + 单张「替换 / 删除」  │
+│ 「再来一组」可换批                          │
+└────────────────────────────────────────────┘
 
-Step 05 · 分镜头（基于脚本生成）
-  - 按钮「生成分镜」：调用 generateStoryboard 给每个 scene 配静帧
-  - 单镜重做按钮保留
-  - 全部静帧就绪后，出现「确认渲染出片」按钮 → submitRenderJob
-  - 渲染任务面板（进度 / 失败修复建议 / 成品视频）保持原样
+┌── 05 生成设置 ─────────────────────────────┐
+│ 时长：15s（固定，「CDS 单段上限」）          │
+│ 模型：⦿ Fast（默认）  ○ PRO                │
+│ 画幅：⦿ 9:16  ○ 1:1  ○ 16:9                │
+│ [ ✨ 一键生成 ]                              │
+└────────────────────────────────────────────┘
+
+┌── 结果面板 ───────────────────────────────┐
+│ ① AI 编剧中（基于品牌资料）                 │
+│ ② AI 设计角色形象                           │
+│ ③ 镜头渲染中（进度条）                      │
+│ ✅ 出片完成 → <video> 预览 + 下载 + 去发布  │
+│ 失败 → 降到 Fast / 换一组图 / 重试          │
+└────────────────────────────────────────────┘
 ```
 
-## 关键改动点（src/routes/_authenticated/aigc.video.tsx）
+## 文案
 
-1. **重排 Step 顺序**：当前 Step 1 是「门店+参考图+主角」，Step 3 是「视频参数」，要调换——参数前置为 Step 01，参考图变 Step 02，主角变 Step 03。
-2. **画风迁移**：`realism`（写实 / 插画）从 Step 05 渲染设置里移到 Step 01。
-3. **模型迁移**：`modelId` 从 Step 05 移到 Step 01，并简化为两档：
-   - `PRO` → `seedance-2-pro`
-   - `Fast` → `seedance-2-lite`
-   - 移除 `seedance-1` 兜底项与下拉框，改用双按钮 toggle。
-4. **参考图 20 张上限**：选中数达 20 时其余卡片禁用 + 角标提示「最多 20 张」；已选区显示 `n/20`。
-5. **Step 04 立意对话**：原 Step 02 内容下移，移除其中和 `highlight`/参数的混排（参数已前置），保留聊天 + 高光要点 + 「生成脚本」入口（按钮从原 Step 04 移过来）。
-6. **Step 05 分镜头**：原 Step 04 拆分——脚本生成留在 Step 04，分镜按钮独立到 Step 05；自动连跑改为手动两步触发（先脚本，后分镜），符合用户描述「脚本生成之后，可以生成分镜头」。
-7. **Step 05 末尾**：保留分辨率 / 渲染策略两个高级项 + 「确认生成视频」+ 渲染任务面板；不再重复模型 / 画风选择。
+- **入口卡标题**：部门帮我拍
+- **入口卡副标题**：选店铺 → 勾类型 → 一键 15 秒成片，脚本、角色都交给 AI
+- **品牌资料卡说明**：AI 会按这份品牌资料设计画面、旁白与角色
+- **一键挑图按钮**：一键自动挑图（最多 9 张）
+- **挑图说明**：仅从「上传素材」中挑选，不含 AI 生成图
+- **类型未选**：至少勾一个视频类型
+- **提交按钮**：✨ 一键生成 15s 视频
+- **阶段标题**：① AI 编剧 → ② 设计角色 → ③ 镜头渲染 → ✅ 完成
+- **结果操作**：下载 MP4 / 去发布中心 / 重新生成
 
-## 不动的部分
+## 数据 & 接口
 
-- `src/api/aigc.ts` 接口签名、`VideoBrief` 字段、`submitRenderJob` 入参不变。
-- 渲染任务轮询、失败修复建议、AppShell / PageHeader 结构、其他路由 `aigc.image` `aigc.copy` `publish` 等全部不动。
-- 现有视觉风格、Panel / StepPanel / ChoiceRow 组件复用。
+`src/types/index.ts`：Shop 增 `brandName / brandIntro / brandTone / categories / primaryCategory`。
+
+`src/api/aigc.ts`：
+- `pickAutoAssets({ shopId, types, category, max:9 })` → `{ assets, reason[] }`，硬过滤 `source==='upload'`，按 `types + category` 与 asset `tags/category` 加权排序取前 9。
+- `oneClickGenerate({ shopId, types, category, assetIds, aspect, modelId })`：内部串 `generateVideoScript`（duration 写死 15，type 取首个，highlight 自动拼「品牌介绍 + 语调 + 多选类型 + 倾向品类」）→ `generateStoryboard` → `submitRenderJob`（duration 15、strategy `one_shot`、resolution `720p`）。返回 `{ jobId, script }`，前端复用 `pollRenderJob`。
+
+`src/mocks/data.ts`：
+- 两家示例店铺补 brand 资料（「瓷器天堂」: tone 国风沉稳, categories 瓷器/茶具/香器；「玩具天堂」: tone 治愈俏皮, categories 玩偶/黑胶/数码）。
+- 给现有 image asset 补 `source:'upload'` 与若干 `category`/`tags`，确保打分有结果。
+
+## 关键约束
+
+- 选图来源 **必须** `source==='upload'`；不足 9 张时按现有数量并提示「仅 N 张，可继续或去上传更多」。
+- 视频类型只暴露大类型（探店 / 上新 / 环境 / 品牌介绍 / 活动 / 顾客好评），不出现「瓷器介绍」「玩具介绍」这类细分。
+- 倾向品类单选，选项来自当前店铺 `categories` + 「全品类」。
+- 时长 15s 固定；策略 `one_shot` 固定。
+- 模型默认 Fast；可切 PRO。
+
+## 改动清单
+
+- 新增：`src/routes/_authenticated/aigc.oneclick.tsx`
+- 修改：`src/routes/_authenticated/aigc.index.tsx`（入口卡）
+- 修改：`src/routes/_authenticated/aigc.video.tsx`（跳转提示条）
+- 修改：`src/routes/_authenticated/settings.tsx`（最小品牌资料编辑卡）
+- 修改：`src/api/aigc.ts`（`pickAutoAssets` / `oneClickGenerate`）
+- 修改：`src/api/shops.ts`（保存/读取品牌资料）
+- 修改：`src/types/index.ts`、`src/mocks/data.ts`
 
 ## 验收
 
-- 自上而下浏览页面顺序与用户列出的 5 步一致。
-- Step 01 一次性确定类型 / 情绪 / 画风 / 时长 / 画幅 / 模型（PRO / Fast）。
-- Step 02 参考图最多 20 张，第 21 张不可选。
-- Step 04 必须先生成脚本，按钮点亮 Step 05 分镜生成。
-- Step 05 分镜全部就绪后才能点「确认生成视频」。
+1. 入口可见；切换店铺时品牌资料卡同步刷新。
+2. 视频类型仅大类型；倾向品类来自店铺 categories。
+3. 自动挑图仅「上传」图，最多 9 张，可重挑。
+4. 一键生成后 4 阶段进度可见，结束播放 15s 视频。
+5. 模型默认 Fast，切 PRO 立刻生效。
+6. `/settings` 可编辑品牌资料并立即影响一键出片结果。
