@@ -1,24 +1,61 @@
-## 调整方案
+# /aigc/video 流程重排
 
-### 1. AI 创作中心（`/aigc`）— 移除冗余入口
-- 删除页面底部「管理与分发」区块（素材库 + 内容分发两个 ManageTile），这两项已在左侧主导航中。
-- 保留：短视频主入口 Hero + AI 图片 / AI 文案 副入口 + 底部品牌提示语。
-- 同时移除文件中不再使用的 `Library`、`Send`、`ManageTile` 代码。
+把 5 步流程拆成更线性的「先定调 → 再选料 → 后生成」三大阶段，严格按用户给出的顺序排布。
 
-### 2. 发布中心（`/publish`）— 合并自动化任务
-- 在 `/publish` 顶部加 Tabs（或分段控件）：「手动发布」｜「自动化任务」，默认手动发布。
-  - **手动发布 Tab**：保留当前 `publish.tsx` 现有的任务创建 + 任务列表。
-  - **自动化任务 Tab**：把 `automation.tsx` 的列表 + 新建任务流程整体迁入，作为同页 Tab 内容（直接复用 `automationApi`、现有组件结构）。
-- 删除 `src/routes/_authenticated/automation.tsx` 路由。
-- 左侧导航 `AppShell.tsx`：移除「自动化任务」菜单项；`TITLES` 表删除 `/automation`。
-- 检查并清理对 `/automation` 的内部链接（工作台等），改指 `/publish`（带 `?tab=automation` 之类查询参数，便于深链）。
+## 新步骤顺序
 
-### 技术要点
-- Tab 状态用 `useSearch` + `Route.useNavigate` 同步到 URL `?tab=manual|auto`，刷新和分享链接保留视图。
-- 自动化的「新建任务」弹窗/抽屉保留原交互，仅迁移容器位置。
-- `routeTree.gen.ts` 由插件自动重生成，删除 automation 路由文件即可。
+```
+Step 01 · 视频基础设置（一屏内 5 个选项）
+  - 视频类型：探店 / 产品展示 / 店铺氛围 / 新品上架
+  - 情绪风格：稳重 / 活泼 / 激动 / 优雅 / 怀旧 / 俏皮
+  - 画风：真人写实 / 插画
+  - 时长：15 / 20 / 30 / 45 / 60s
+  - 画幅：9:16 / 1:1 / 16:9
+  - 渲染模型：PRO（Seedance 2 Pro）/ Fast（Seedance 2 Lite）
 
-### 不动的部分
-- `/aigc/video`、`/aigc/image`、`/aigc/copy` 内容与流程不变。
-- `automationApi`、`publishApi`、mock 数据不变。
-- 素材库 `/assets`、账号 `/accounts`、设置 `/settings` 不变。
+Step 02 · 参考图（最多 20 张）
+  - 门店选择（保留，必要的归属）
+  - 从素材库挑参考图，硬上限 20，超过禁选并提示
+  - 已选缩略图条 + 单张移除
+
+Step 03 · 主角选择
+  - 店员小 K / 顾客阿桃 / 暂不选（保持现有候选）
+
+Step 04 · 立意对话（生成脚本）
+  - 与 AI 自然语言对话，多轮聊创意
+  - 「生成脚本」按钮：调用 generateVideoScript(buildBrief())
+  - 展示脚本标题 + 场景列表（先不带静帧）
+
+Step 05 · 分镜头（基于脚本生成）
+  - 按钮「生成分镜」：调用 generateStoryboard 给每个 scene 配静帧
+  - 单镜重做按钮保留
+  - 全部静帧就绪后，出现「确认渲染出片」按钮 → submitRenderJob
+  - 渲染任务面板（进度 / 失败修复建议 / 成品视频）保持原样
+```
+
+## 关键改动点（src/routes/_authenticated/aigc.video.tsx）
+
+1. **重排 Step 顺序**：当前 Step 1 是「门店+参考图+主角」，Step 3 是「视频参数」，要调换——参数前置为 Step 01，参考图变 Step 02，主角变 Step 03。
+2. **画风迁移**：`realism`（写实 / 插画）从 Step 05 渲染设置里移到 Step 01。
+3. **模型迁移**：`modelId` 从 Step 05 移到 Step 01，并简化为两档：
+   - `PRO` → `seedance-2-pro`
+   - `Fast` → `seedance-2-lite`
+   - 移除 `seedance-1` 兜底项与下拉框，改用双按钮 toggle。
+4. **参考图 20 张上限**：选中数达 20 时其余卡片禁用 + 角标提示「最多 20 张」；已选区显示 `n/20`。
+5. **Step 04 立意对话**：原 Step 02 内容下移，移除其中和 `highlight`/参数的混排（参数已前置），保留聊天 + 高光要点 + 「生成脚本」入口（按钮从原 Step 04 移过来）。
+6. **Step 05 分镜头**：原 Step 04 拆分——脚本生成留在 Step 04，分镜按钮独立到 Step 05；自动连跑改为手动两步触发（先脚本，后分镜），符合用户描述「脚本生成之后，可以生成分镜头」。
+7. **Step 05 末尾**：保留分辨率 / 渲染策略两个高级项 + 「确认生成视频」+ 渲染任务面板；不再重复模型 / 画风选择。
+
+## 不动的部分
+
+- `src/api/aigc.ts` 接口签名、`VideoBrief` 字段、`submitRenderJob` 入参不变。
+- 渲染任务轮询、失败修复建议、AppShell / PageHeader 结构、其他路由 `aigc.image` `aigc.copy` `publish` 等全部不动。
+- 现有视觉风格、Panel / StepPanel / ChoiceRow 组件复用。
+
+## 验收
+
+- 自上而下浏览页面顺序与用户列出的 5 步一致。
+- Step 01 一次性确定类型 / 情绪 / 画风 / 时长 / 画幅 / 模型（PRO / Fast）。
+- Step 02 参考图最多 20 张，第 21 张不可选。
+- Step 04 必须先生成脚本，按钮点亮 Step 05 分镜生成。
+- Step 05 分镜全部就绪后才能点「确认生成视频」。
