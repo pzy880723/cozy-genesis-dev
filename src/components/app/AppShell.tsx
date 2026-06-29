@@ -4,7 +4,6 @@ import {
   ImagePlay,
   Sparkles,
   Send,
-  Bot,
   KeyRound,
   Settings,
   Search,
@@ -19,7 +18,6 @@ const NAV = [
   { to: "/aigc", label: "AI 创作中心", icon: Sparkles },
   { to: "/assets", label: "素材库", icon: ImagePlay },
   { to: "/publish", label: "发布中心", icon: Send },
-  { to: "/automation", label: "自动化任务", icon: Bot },
   { to: "/accounts", label: "账号管理", icon: KeyRound },
   { to: "/settings", label: "系统设置", icon: Settings },
 ] as const;
@@ -32,7 +30,6 @@ const TITLES: Record<string, string> = {
   "/aigc/image": "AI 图片",
   "/aigc/copy": "AI 文案",
   "/publish": "发布中心",
-  "/automation": "自动化任务",
   "/accounts": "账号管理",
   "/settings": "系统设置",
 };
