@@ -18,6 +18,7 @@ import { Route as AuthenticatedAutomationRouteImport } from './routes/_authentic
 import { Route as AuthenticatedAssetsRouteImport } from './routes/_authenticated/assets'
 import { Route as AuthenticatedAccountsRouteImport } from './routes/_authenticated/accounts'
 import { Route as AuthenticatedAigcIndexRouteImport } from './routes/_authenticated/aigc.index'
+import { Route as AuthenticatedAigcVideoRouteImport } from './routes/_authenticated/aigc.video'
 
 const AuthRoute = AuthRouteImport.update({
   id: '/auth',
@@ -63,6 +64,11 @@ const AuthenticatedAigcIndexRoute = AuthenticatedAigcIndexRouteImport.update({
   path: '/aigc/',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedAigcVideoRoute = AuthenticatedAigcVideoRouteImport.update({
+  id: '/aigc/video',
+  path: '/aigc/video',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
@@ -72,6 +78,7 @@ export interface FileRoutesByFullPath {
   '/automation': typeof AuthenticatedAutomationRoute
   '/publish': typeof AuthenticatedPublishRoute
   '/settings': typeof AuthenticatedSettingsRoute
+  '/aigc/video': typeof AuthenticatedAigcVideoRoute
   '/aigc/': typeof AuthenticatedAigcIndexRoute
 }
 export interface FileRoutesByTo {
@@ -82,6 +89,7 @@ export interface FileRoutesByTo {
   '/publish': typeof AuthenticatedPublishRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/': typeof AuthenticatedIndexRoute
+  '/aigc/video': typeof AuthenticatedAigcVideoRoute
   '/aigc': typeof AuthenticatedAigcIndexRoute
 }
 export interface FileRoutesById {
@@ -94,6 +102,7 @@ export interface FileRoutesById {
   '/_authenticated/publish': typeof AuthenticatedPublishRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
+  '/_authenticated/aigc/video': typeof AuthenticatedAigcVideoRoute
   '/_authenticated/aigc/': typeof AuthenticatedAigcIndexRoute
 }
 export interface FileRouteTypes {
@@ -106,6 +115,7 @@ export interface FileRouteTypes {
     | '/automation'
     | '/publish'
     | '/settings'
+    | '/aigc/video'
     | '/aigc/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -116,6 +126,7 @@ export interface FileRouteTypes {
     | '/publish'
     | '/settings'
     | '/'
+    | '/aigc/video'
     | '/aigc'
   id:
     | '__root__'
@@ -127,6 +138,7 @@ export interface FileRouteTypes {
     | '/_authenticated/publish'
     | '/_authenticated/settings'
     | '/_authenticated/'
+    | '/_authenticated/aigc/video'
     | '/_authenticated/aigc/'
   fileRoutesById: FileRoutesById
 }
@@ -200,6 +212,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAigcIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/aigc/video': {
+      id: '/_authenticated/aigc/video'
+      path: '/aigc/video'
+      fullPath: '/aigc/video'
+      preLoaderRoute: typeof AuthenticatedAigcVideoRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
   }
 }
 
@@ -210,6 +229,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedPublishRoute: typeof AuthenticatedPublishRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
+  AuthenticatedAigcVideoRoute: typeof AuthenticatedAigcVideoRoute
   AuthenticatedAigcIndexRoute: typeof AuthenticatedAigcIndexRoute
 }
 
@@ -220,6 +240,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedPublishRoute: AuthenticatedPublishRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
+  AuthenticatedAigcVideoRoute: AuthenticatedAigcVideoRoute,
   AuthenticatedAigcIndexRoute: AuthenticatedAigcIndexRoute,
 }
 
