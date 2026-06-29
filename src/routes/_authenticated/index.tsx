@@ -49,13 +49,15 @@ function DashboardPage() {
         actions={
           <>
             <Link
-              to="/automation"
+              to="/publish"
+              search={{ mode: "auto" }}
               className="inline-flex h-9 items-center rounded-md border border-border bg-white px-3.5 text-sm font-bold hover:bg-secondary"
             >
               创建自动化
             </Link>
             <Link
               to="/publish"
+              search={{ mode: "manual" }}
               className="inline-flex h-9 items-center rounded-md bg-primary px-3.5 text-sm font-bold text-primary-foreground hover:opacity-95"
             >
               新建发布任务
