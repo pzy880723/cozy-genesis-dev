@@ -85,7 +85,19 @@ export const exchangeErpTicket = createServerFn({ method: "POST" })
 
     // 2) admin client（懒加载，避免进入 client bundle）
     const { getSharedAdmin } = await import("./shared-admin.server");
+    // 新表 erp_user_links 不在生成的 Database 类型里，用 loose 客户端做数据库操作。
     const admin = getSharedAdmin();
+    const db = admin as unknown as {
+      from: (t: string) => {
+        select: (c: string) => {
+          eq: (col: string, v: string) => { maybeSingle: () => Promise<{ data: { aigc_user_id?: string } | null; error: unknown }> };
+        };
+        insert: (row: Record<string, unknown>) => Promise<{ error: unknown }>;
+        update: (row: Record<string, unknown>) => {
+          eq: (col: string, v: string) => Promise<{ error: unknown }>;
+        };
+      };
+    };
 
     const shopIdPrimary = erpUser.shops?.[0]?.id ?? null;
     const shopNamePrimary = erpUser.shops?.[0]?.name ?? null;
@@ -102,8 +114,8 @@ export const exchangeErpTicket = createServerFn({ method: "POST" })
     };
 
     // 3) 查影子用户
-    const { data: linkRow, error: linkErr } = await admin
-      .from("erp_user_links" as never)
+    const { data: linkRow, error: linkErr } = await db
+      .from("erp_user_links")
       .select("erp_user_id, aigc_user_id")
       .eq("erp_user_id", erpUser.id)
       .maybeSingle();
@@ -139,8 +151,8 @@ export const exchangeErpTicket = createServerFn({ method: "POST" })
         aigcUserId = created.user.id;
       }
 
-      const { error: insertErr } = await admin
-        .from("erp_user_links" as never)
+      const { error: insertErr } = await db
+        .from("erp_user_links")
         .insert({
           erp_user_id: erpUser.id,
           aigc_user_id: aigcUserId,
@@ -148,7 +160,7 @@ export const exchangeErpTicket = createServerFn({ method: "POST" })
           display_name: erpUser.display_name,
           roles,
           shops: erpUser.shops ?? [],
-        } as never);
+        });
       if (insertErr) {
         console.error("[erp-sso] link insert failed", insertErr);
       }
@@ -159,15 +171,15 @@ export const exchangeErpTicket = createServerFn({ method: "POST" })
       });
       if (updErr) console.error("[erp-sso] updateUser failed", updErr);
 
-      await admin
-        .from("erp_user_links" as never)
+      await db
+        .from("erp_user_links")
         .update({
           phone: erpUser.phone,
           display_name: erpUser.display_name,
           roles,
           shops: erpUser.shops ?? [],
           last_login_at: new Date().toISOString(),
-        } as never)
+        })
         .eq("erp_user_id", erpUser.id);
     }
 
