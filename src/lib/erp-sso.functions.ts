@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import { hasErpAigcAccess, validateErpTicket } from "./erp-sso-contract";
 
 type ErpShop = { id: string; name: string };
 type ErpExchangeUser = {
@@ -31,24 +32,21 @@ function toUiError(code: string): { code: string; message: string } {
   return { code, message: ERR_MSG[code] ?? "登录失败，请稍后再试" };
 }
 
-// 允许进入 AIGC 的 ERP 真实角色（warehouse_staff 暂不开放）
-const AIGC_ALLOWED_ROLES = new Set([
-  "super_admin",
-  "hq_operator",
-  "store_manager",
-  "store_staff",
-]);
-// 若 ERP 后续在 permissions 中显式返回该权限，则优先按权限放行
-const AIGC_ACCESS_PERMISSION = "aigc_access";
-
 export const exchangeErpTicket = createServerFn({ method: "POST" })
-  .inputValidator((input: { ticket: string }) => {
-    if (!input || typeof input.ticket !== "string" || input.ticket.length < 8) {
-      throw new Error("ticket_required");
-    }
-    return { ticket: input.ticket };
+  .validator((input: { ticket?: string }) => {
+    return { ticket: typeof input?.ticket === "string" ? input.ticket : "" };
   })
   .handler(async ({ data }) => {
+    let ticket: string;
+    try {
+      ticket = validateErpTicket(data.ticket);
+    } catch {
+      return {
+        ok: false as const,
+        error: toUiError(data.ticket ? "ticket_invalid" : "ticket_required"),
+      };
+    }
+
     const erpBase = process.env.ERP_SSO_BASE_URL;
     const secret = process.env.ERP_AIGC_SSO_SECRET;
     if (!erpBase) return { ok: false as const, error: toUiError("config_missing") };
@@ -63,7 +61,7 @@ export const exchangeErpTicket = createServerFn({ method: "POST" })
           "content-type": "application/json",
           "x-erp-sso-secret": secret,
         },
-        body: JSON.stringify({ ticket: data.ticket }),
+        body: JSON.stringify({ ticket }),
       });
     } catch (_e) {
       return { ok: false as const, error: toUiError("erp_unavailable") };
@@ -74,21 +72,29 @@ export const exchangeErpTicket = createServerFn({ method: "POST" })
       try {
         const j = (await resp.json()) as { error?: string; code?: string };
         code = j?.code ?? j?.error ?? code;
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
       return { ok: false as const, error: toUiError(code) };
     }
 
-    const payload = (await resp.json()) as { ok?: boolean; data?: { user?: ErpExchangeUser }; error?: string; code?: string };
+    const payload = (await resp.json()) as {
+      ok?: boolean;
+      data?: { user?: ErpExchangeUser };
+      error?: string;
+      code?: string;
+    };
     const erpUser = payload?.data?.user;
     if (!payload?.ok || !erpUser?.id) {
-      return { ok: false as const, error: toUiError(payload?.code ?? payload?.error ?? "erp_unavailable") };
+      return {
+        ok: false as const,
+        error: toUiError(payload?.code ?? payload?.error ?? "erp_unavailable"),
+      };
     }
 
     const roles = (erpUser.roles ?? []).filter((r) => typeof r === "string");
     const permissions = (erpUser.permissions ?? []).filter((p) => typeof p === "string");
-    const hasExplicitPermission = permissions.includes(AIGC_ACCESS_PERMISSION);
-    const hasAllowedRole = roles.some((r) => AIGC_ALLOWED_ROLES.has(r));
-    if (!hasExplicitPermission && !hasAllowedRole) {
+    if (!hasErpAigcAccess(roles, permissions)) {
       return { ok: false as const, error: toUiError("no_aigc_permission") };
     }
 
@@ -99,7 +105,10 @@ export const exchangeErpTicket = createServerFn({ method: "POST" })
     const db = admin as unknown as {
       from: (t: string) => {
         select: (c: string) => {
-          eq: (col: string, v: string) => {
+          eq: (
+            col: string,
+            v: string,
+          ) => {
             maybeSingle: () => Promise<{ data: { aigc_user_id?: string } | null; error: unknown }>;
           };
         };
@@ -115,15 +124,17 @@ export const exchangeErpTicket = createServerFn({ method: "POST" })
 
     const shopIdPrimary = erpUser.shops?.[0]?.id ?? null;
     const shopNamePrimary = erpUser.shops?.[0]?.name ?? null;
-    const metadata = {
-      auth_source: "erp" as const,
-      erp_user_id: erpUser.id,
+    const userMetadata = {
       phone: erpUser.phone ?? null,
       display_name: erpUser.display_name ?? null,
+      shop_name: shopNamePrimary,
+    };
+    const appMetadata = {
+      auth_source: "erp" as const,
+      erp_user_id: erpUser.id,
       roles,
       permissions,
       shop_id: shopIdPrimary,
-      shop_name: shopNamePrimary,
       shops: erpUser.shops ?? [],
     };
 
@@ -153,82 +164,95 @@ export const exchangeErpTicket = createServerFn({ method: "POST" })
         email: shadowEmail,
         email_confirm: true,
         password: randomPw,
-        user_metadata: metadata,
+        user_metadata: userMetadata,
+        app_metadata: appMetadata,
       });
       if (createErr || !created?.user) {
-        console.error("[erp-sso] createUser failed", createErr);
-        return { ok: false as const, error: toUiError("session_mint_failed") };
-      }
-      const candidateId = created.user.id;
-
-      const { error: upsertErr } = await db.from("erp_user_links").upsert(
-        {
-          erp_user_id: erpUser.id,
-          aigc_user_id: candidateId,
-          phone: erpUser.phone,
-          display_name: erpUser.display_name,
-          roles,
-          shops: erpUser.shops ?? [],
-        },
-        { onConflict: "erp_user_id", ignoreDuplicates: true },
-      );
-      if (upsertErr) {
-        console.error("[erp-sso] link upsert failed", upsertErr);
-        // 清理刚建出来但没能落映射的孤儿 auth 用户
-        await admin.auth.admin.deleteUser(candidateId).catch(() => {});
-        return { ok: false as const, error: toUiError("session_mint_failed") };
-      }
-
-      // 回读 canonical 映射（并发下另一路径可能先落）
-      const { data: canonical, error: reReadErr } = await db
-        .from("erp_user_links")
-        .select("aigc_user_id")
-        .eq("erp_user_id", erpUser.id)
-        .maybeSingle();
-      if (reReadErr || !canonical?.aigc_user_id) {
-        console.error("[erp-sso] link re-read failed", reReadErr);
-        await admin.auth.admin.deleteUser(candidateId).catch(() => {});
-        return { ok: false as const, error: toUiError("session_mint_failed") };
-      }
-      aigcUserId = canonical.aigc_user_id;
-
-      if (aigcUserId !== candidateId) {
-        // 输掉了并发：删除本次孤儿；改用 canonical id 并刷新其 metadata
-        await admin.auth.admin.deleteUser(candidateId).catch((e) => {
-          console.error("[erp-sso] orphan cleanup failed", e);
-        });
-        const { error: updErr } = await admin.auth.admin.updateUserById(aigcUserId, {
-          user_metadata: metadata,
-        });
-        if (updErr) {
-          console.error("[erp-sso] updateUser (post-race) failed", updErr);
+        // A second first-login request may have created the deterministic email
+        // just before this request. Give its mapping a short window to appear.
+        for (let attempt = 0; attempt < 5 && !aigcUserId; attempt += 1) {
+          if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, 80));
+          const { data: racedLink, error: racedLinkErr } = await db
+            .from("erp_user_links")
+            .select("aigc_user_id")
+            .eq("erp_user_id", erpUser.id)
+            .maybeSingle();
+          if (racedLinkErr) break;
+          aigcUserId = racedLink?.aigc_user_id ?? null;
+        }
+        if (!aigcUserId) {
+          console.error("[erp-sso] createUser failed", createErr);
           return { ok: false as const, error: toUiError("session_mint_failed") };
         }
-      }
-    } else {
-      // 已存在：刷新 metadata + last_login_at；任一失败都中止登录
-      const { error: updErr } = await admin.auth.admin.updateUserById(aigcUserId, {
-        user_metadata: metadata,
-      });
-      if (updErr) {
-        console.error("[erp-sso] updateUser failed", updErr);
-        return { ok: false as const, error: toUiError("session_mint_failed") };
-      }
+      } else {
+        const candidateId = created.user.id;
 
-      const { error: touchErr } = await db
-        .from("erp_user_links")
-        .update({
-          phone: erpUser.phone,
-          display_name: erpUser.display_name,
-          roles,
-          shops: erpUser.shops ?? [],
-          last_login_at: new Date().toISOString(),
-        })
-        .eq("erp_user_id", erpUser.id);
-      if (touchErr) {
-        console.error("[erp-sso] link update failed", touchErr);
-        return { ok: false as const, error: toUiError("session_mint_failed") };
+        const { error: upsertErr } = await db.from("erp_user_links").upsert(
+          {
+            erp_user_id: erpUser.id,
+            aigc_user_id: candidateId,
+            phone: erpUser.phone,
+            display_name: erpUser.display_name,
+            roles,
+            permissions,
+            shops: erpUser.shops ?? [],
+          },
+          { onConflict: "erp_user_id", ignoreDuplicates: true },
+        );
+        if (upsertErr) {
+          console.error("[erp-sso] link upsert failed", upsertErr);
+          await admin.auth.admin.deleteUser(candidateId).catch(() => {});
+          return { ok: false as const, error: toUiError("session_mint_failed") };
+        }
+
+        const { data: canonical, error: reReadErr } = await db
+          .from("erp_user_links")
+          .select("aigc_user_id")
+          .eq("erp_user_id", erpUser.id)
+          .maybeSingle();
+        if (reReadErr || !canonical?.aigc_user_id) {
+          console.error("[erp-sso] link re-read failed", reReadErr);
+          await admin.auth.admin.deleteUser(candidateId).catch(() => {});
+          return { ok: false as const, error: toUiError("session_mint_failed") };
+        }
+        aigcUserId = canonical.aigc_user_id;
+
+        if (aigcUserId !== candidateId) {
+          await admin.auth.admin.deleteUser(candidateId).catch((error) => {
+            console.error("[erp-sso] orphan cleanup failed", error);
+          });
+        }
       }
+    }
+
+    if (!aigcUserId) {
+      return { ok: false as const, error: toUiError("session_mint_failed") };
+    }
+
+    // Refresh both auth metadata and the auditable mapping before minting a session.
+    const { error: updErr } = await admin.auth.admin.updateUserById(aigcUserId, {
+      user_metadata: userMetadata,
+      app_metadata: appMetadata,
+    });
+    if (updErr) {
+      console.error("[erp-sso] updateUser failed", updErr);
+      return { ok: false as const, error: toUiError("session_mint_failed") };
+    }
+
+    const { error: touchErr } = await db
+      .from("erp_user_links")
+      .update({
+        phone: erpUser.phone,
+        display_name: erpUser.display_name,
+        roles,
+        permissions,
+        shops: erpUser.shops ?? [],
+        last_login_at: new Date().toISOString(),
+      })
+      .eq("erp_user_id", erpUser.id);
+    if (touchErr) {
+      console.error("[erp-sso] link update failed", touchErr);
+      return { ok: false as const, error: toUiError("session_mint_failed") };
     }
 
     // 4) 生成一次性 magiclink token（前端用 verifyOtp 建立当前会话）

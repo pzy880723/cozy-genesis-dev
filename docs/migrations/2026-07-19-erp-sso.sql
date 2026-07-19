@@ -8,6 +8,7 @@ create table if not exists public.erp_user_links (
   phone text,
   display_name text,
   roles text[] not null default '{}',
+  permissions text[] not null default '{}',
   shops jsonb not null default '[]'::jsonb,
   last_login_at timestamptz not null default now(),
   created_at timestamptz not null default now(),
@@ -21,7 +22,12 @@ create index if not exists erp_user_links_aigc_user_idx
 alter table public.erp_user_links enable row level security;
 
 -- 只有 service_role（服务端 admin 客户端）能读写；authenticated / anon 都不可见。
+revoke all on public.erp_user_links from anon, authenticated;
 grant all on public.erp_user_links to service_role;
+
+-- 兼容已经提前执行过旧版迁移的环境。
+alter table public.erp_user_links
+  add column if not exists permissions text[] not null default '{}';
 
 -- updated_at 触发器
 create or replace function public.erp_user_links_touch_updated_at()
@@ -33,3 +39,6 @@ drop trigger if exists erp_user_links_touch_updated_at on public.erp_user_links;
 create trigger erp_user_links_touch_updated_at
   before update on public.erp_user_links
   for each row execute function public.erp_user_links_touch_updated_at();
+
+revoke all on function public.erp_user_links_touch_updated_at() from public, anon, authenticated;
+grant execute on function public.erp_user_links_touch_updated_at() to service_role;

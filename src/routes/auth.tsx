@@ -2,11 +2,12 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/shared-db/client";
 import { ArrowRight, Building2 } from "lucide-react";
+import { normalizeInternalRedirect } from "@/lib/erp-sso-contract";
 
 export const Route = createFileRoute("/auth")({
   ssr: false,
   validateSearch: (s: Record<string, unknown>) => ({
-    from: typeof s.from === "string" ? s.from : "/",
+    from: normalizeInternalRedirect(typeof s.from === "string" ? s.from : "/"),
   }),
   head: () => ({
     meta: [
@@ -50,9 +51,7 @@ function AuthPage() {
             <div className="text-[10px] font-black tracking-[0.18em] text-primary">
               ENTERPRISE SSO
             </div>
-            <h1 className="text-lg font-black text-foreground">
-              BOOMER.OFF AI 营销中心
-            </h1>
+            <h1 className="text-lg font-black text-foreground">BOOMER.OFF AI 营销中心</h1>
           </div>
         </div>
 

@@ -2,13 +2,14 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/shared-db/client";
 import { exchangeErpTicket } from "@/lib/erp-sso.functions";
+import { normalizeInternalRedirect } from "@/lib/erp-sso-contract";
 import { Loader2, ShieldAlert, ArrowRight } from "lucide-react";
 
 export const Route = createFileRoute("/auth/erp")({
   ssr: false,
   validateSearch: (s: Record<string, unknown>) => ({
     ticket: typeof s.ticket === "string" ? s.ticket : "",
-    from: typeof s.from === "string" ? s.from : "/",
+    from: normalizeInternalRedirect(typeof s.from === "string" ? s.from : "/"),
   }),
   head: () => ({
     meta: [
@@ -37,7 +38,9 @@ function ErpSsoPage() {
       const url = new URL(window.location.href);
       url.searchParams.delete("ticket");
       window.history.replaceState({}, "", url.toString());
-    } catch { /* noop */ }
+    } catch {
+      /* noop */
+    }
 
     void (async () => {
       try {
@@ -60,7 +63,8 @@ function ErpSsoPage() {
         // 建会话成功；跳转到目标页
         navigate({ to: from || "/", replace: true });
       } catch (e) {
-        setErrMsg(e instanceof Error ? e.message : String(e));
+        const message = e instanceof Error ? e.message : String(e);
+        setErrMsg(message === "ticket_invalid" ? "登录票据无效，请回到 ERP 重新进入" : message);
         setPhase("error");
       }
     })();
@@ -73,9 +77,7 @@ function ErpSsoPage() {
           <div className="text-[11px] font-black tracking-[0.18em] text-primary">
             SSO · ERP → AIGC
           </div>
-          <h1 className="mt-2 text-xl font-black text-foreground">
-            BOOMER.OFF AI 营销中心
-          </h1>
+          <h1 className="mt-2 text-xl font-black text-foreground">BOOMER.OFF AI 营销中心</h1>
         </div>
 
         {phase === "verifying" && (
