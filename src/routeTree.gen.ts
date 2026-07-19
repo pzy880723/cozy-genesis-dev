@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
+import { Route as AuthErpRouteImport } from './routes/auth.erp'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as AuthenticatedPublishRouteImport } from './routes/_authenticated/publish'
 import { Route as AuthenticatedAssetsRouteImport } from './routes/_authenticated/assets'
@@ -38,6 +39,11 @@ const AuthenticatedIndexRoute = AuthenticatedIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthErpRoute = AuthErpRouteImport.update({
+  id: '/erp',
+  path: '/erp',
+  getParentRoute: () => AuthRoute,
 } as any)
 const AuthenticatedSettingsRoute = AuthenticatedSettingsRouteImport.update({
   id: '/settings',
@@ -104,11 +110,12 @@ const ApiPublicCronAutomationTickRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
-  '/auth': typeof AuthRoute
+  '/auth': typeof AuthRouteWithChildren
   '/accounts': typeof AuthenticatedAccountsRoute
   '/assets': typeof AuthenticatedAssetsRoute
   '/publish': typeof AuthenticatedPublishRoute
   '/settings': typeof AuthenticatedSettingsRoute
+  '/auth/erp': typeof AuthErpRoute
   '/aigc/copy': typeof AuthenticatedAigcCopyRoute
   '/aigc/image': typeof AuthenticatedAigcImageRoute
   '/aigc/oneclick': typeof AuthenticatedAigcOneclickRoute
@@ -119,11 +126,12 @@ export interface FileRoutesByFullPath {
   '/api/public/worker/cron-tick': typeof ApiPublicWorkerCronTickRoute
 }
 export interface FileRoutesByTo {
-  '/auth': typeof AuthRoute
+  '/auth': typeof AuthRouteWithChildren
   '/accounts': typeof AuthenticatedAccountsRoute
   '/assets': typeof AuthenticatedAssetsRoute
   '/publish': typeof AuthenticatedPublishRoute
   '/settings': typeof AuthenticatedSettingsRoute
+  '/auth/erp': typeof AuthErpRoute
   '/': typeof AuthenticatedIndexRoute
   '/aigc/copy': typeof AuthenticatedAigcCopyRoute
   '/aigc/image': typeof AuthenticatedAigcImageRoute
@@ -137,11 +145,12 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
-  '/auth': typeof AuthRoute
+  '/auth': typeof AuthRouteWithChildren
   '/_authenticated/accounts': typeof AuthenticatedAccountsRoute
   '/_authenticated/assets': typeof AuthenticatedAssetsRoute
   '/_authenticated/publish': typeof AuthenticatedPublishRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
+  '/auth/erp': typeof AuthErpRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
   '/_authenticated/aigc/copy': typeof AuthenticatedAigcCopyRoute
   '/_authenticated/aigc/image': typeof AuthenticatedAigcImageRoute
@@ -161,6 +170,7 @@ export interface FileRouteTypes {
     | '/assets'
     | '/publish'
     | '/settings'
+    | '/auth/erp'
     | '/aigc/copy'
     | '/aigc/image'
     | '/aigc/oneclick'
@@ -176,6 +186,7 @@ export interface FileRouteTypes {
     | '/assets'
     | '/publish'
     | '/settings'
+    | '/auth/erp'
     | '/'
     | '/aigc/copy'
     | '/aigc/image'
@@ -193,6 +204,7 @@ export interface FileRouteTypes {
     | '/_authenticated/assets'
     | '/_authenticated/publish'
     | '/_authenticated/settings'
+    | '/auth/erp'
     | '/_authenticated/'
     | '/_authenticated/aigc/copy'
     | '/_authenticated/aigc/image'
@@ -206,7 +218,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
-  AuthRoute: typeof AuthRoute
+  AuthRoute: typeof AuthRouteWithChildren
   ApiPublicCronAutomationTickRoute: typeof ApiPublicCronAutomationTickRoute
   ApiPublicWorkerCallbackRoute: typeof ApiPublicWorkerCallbackRoute
   ApiPublicWorkerCronTickRoute: typeof ApiPublicWorkerCronTickRoute
@@ -234,6 +246,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/'
       preLoaderRoute: typeof AuthenticatedIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/auth/erp': {
+      id: '/auth/erp'
+      path: '/erp'
+      fullPath: '/auth/erp'
+      preLoaderRoute: typeof AuthErpRouteImport
+      parentRoute: typeof AuthRoute
     }
     '/_authenticated/settings': {
       id: '/_authenticated/settings'
@@ -351,9 +370,19 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
 const AuthenticatedRouteRouteWithChildren =
   AuthenticatedRouteRoute._addFileChildren(AuthenticatedRouteRouteChildren)
 
+interface AuthRouteChildren {
+  AuthErpRoute: typeof AuthErpRoute
+}
+
+const AuthRouteChildren: AuthRouteChildren = {
+  AuthErpRoute: AuthErpRoute,
+}
+
+const AuthRouteWithChildren = AuthRoute._addFileChildren(AuthRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
-  AuthRoute: AuthRoute,
+  AuthRoute: AuthRouteWithChildren,
   ApiPublicCronAutomationTickRoute: ApiPublicCronAutomationTickRoute,
   ApiPublicWorkerCallbackRoute: ApiPublicWorkerCallbackRoute,
   ApiPublicWorkerCronTickRoute: ApiPublicWorkerCronTickRoute,
@@ -361,13 +390,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}
