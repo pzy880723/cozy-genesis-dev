@@ -440,7 +440,7 @@ function VideoFlow() {
                 点右上「生成脚本」；AI 编剧会返回精确的分镜列表，每镜的时长与顺序会原样保留。
               </div>
             ) : (
-              <ScriptShotList script={script} />
+              <ScriptShotList script={script} clips={clips} />
             )}
           </div>
         </StepPanel>
