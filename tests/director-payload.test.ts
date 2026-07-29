@@ -4,11 +4,13 @@ import test from "node:test";
 import {
   buildDirectorCreatePayload,
   buildDirectorCompletePayload,
+  buildStoryboardPayload,
   buildSurprisePreviewPayload,
   buildSurpriseSubmitPayload,
   clipsFromScript,
   DEFAULT_DIRECTOR_MODEL,
   mapSurprisePollStatus,
+  unwrapDirectorCompleteResponse,
   unwrapDirectorPollResponse,
   unwrapDirectorScriptResponse,
   unwrapStoryboardResponse,
@@ -30,8 +32,9 @@ const SCRIPT: DirectorScript = {
 };
 
 const ASSETS: PickedAssetRef[] = [
-  { id: "a1", url: "https://cdn/x/1.jpg", thumbnail_url: "https://cdn/x/1.t.jpg" },
-  { id: "a2", url: "https://cdn/x/2.jpg", thumbnail_url: null },
+  { id: "a1", url: "https://cdn/x/1.jpg", summary: "门头正面", category: "storefront", thumbnail_url: "https://cdn/x/1.t.jpg" },
+  { id: "a2", url: "https://cdn/x/2.jpg", summary: "货架细节", category: "product", thumbnail_url: null },
+  { id: "a3", url: "https://cdn/x/3.jpg", summary: "试戴特写", category: "lifestyle", thumbnail_url: null },
 ];
 
 const CHARACTER: MarketingCharacter = {
@@ -134,7 +137,10 @@ test("unwrapStoryboardResponse extracts .script and .frames from { ok, script, f
   const raw = {
     ok: true,
     script: SCRIPT,
-    frames: ["https://cdn/f/1.jpg", { url: "https://cdn/f/2.jpg" }],
+    frames: [
+      { scene_index: 0, url: "https://cdn/f/1.jpg", key: "k0" },
+      { scene_index: 1, url: "https://cdn/f/2.jpg", key: "k1" },
+    ],
   };
   const r = unwrapStoryboardResponse(raw);
   assert.equal(r.script, SCRIPT);
@@ -168,4 +174,123 @@ test("poll-marketing-video 'succeeded' status maps to 'done' for the surprise fl
   assert.equal(mapSurprisePollStatus("failed"), "failed");
   assert.equal(mapSurprisePollStatus("ready_to_stitch"), "ready_to_stitch");
   assert.equal(mapSurprisePollStatus(undefined), "unknown");
+});
+
+// ─── Round 3 · storyboard payload + positional frames + poll progress ───────
+
+test("storyboard payload sends positional assets + character (image_index → assets[index])", () => {
+  const body = buildStoryboardPayload({
+    shopId: "shop_zxth",
+    script: SCRIPT,
+    pickedAssets: ASSETS,
+    selectedCharacter: CHARACTER,
+    style: "steady",
+    realism: "photoreal",
+  });
+  assert.equal(body.shop_id, "shop_zxth");
+  assert.equal(body.script, SCRIPT); // original by reference
+  assert.equal(body.character, CHARACTER); // selected character, not `selected_character`
+  assert.equal(body.style, "steady");
+  assert.equal(body.realism, "photoreal");
+  // NEVER send image_urls / aspect — those are ignored by storyboard-marketing-video.
+  assert.ok(!("image_urls" in body), "storyboard must NOT send image_urls");
+  assert.ok(!("aspect" in body), "storyboard must NOT send aspect");
+
+  const assets = body.assets as Array<{ asset_id: string; index: number; url: string; summary: string; category: string | null }>;
+  assert.equal(assets.length, 3);
+  // Positional index === array position.
+  assert.deepEqual(assets.map((a) => a.index), [0, 1, 2]);
+  assert.deepEqual(assets.map((a) => a.asset_id), ["a1", "a2", "a3"]);
+  assert.deepEqual(assets.map((a) => a.summary), ["门头正面", "货架细节", "试戴特写"]);
+  assert.deepEqual(assets.map((a) => a.category), ["storefront", "product", "lifestyle"]);
+
+  // image_index=1 in a script clip must resolve to the SECOND asset.
+  const clipWithIdx1 = SCRIPT.scenes[0];
+  assert.equal(clipWithIdx1.image_index, 1);
+  assert.equal(assets[clipWithIdx1.image_index!].asset_id, "a2");
+});
+
+test("storyboard payload auto-mode passes character=null", () => {
+  const body = buildStoryboardPayload({
+    shopId: "shop_zxth",
+    script: SCRIPT,
+    pickedAssets: ASSETS,
+    selectedCharacter: null,
+  });
+  assert.equal(body.character, null);
+});
+
+test("storyboard payload includes only_indices when provided (single-shot regen)", () => {
+  const body = buildStoryboardPayload({
+    shopId: "shop_zxth",
+    script: SCRIPT,
+    pickedAssets: ASSETS,
+    onlyIndices: [2],
+  });
+  assert.deepEqual(body.only_indices, [2]);
+});
+
+test("unwrapStoryboardResponse preserves positional alignment when middle frame url is null", () => {
+  const raw = {
+    ok: true,
+    script: SCRIPT,
+    frames: [
+      { scene_index: 0, url: "https://cdn/f/0.jpg", key: "k0" },
+      { scene_index: 1, url: null, error: "safety_block", key: "k1" },
+      { scene_index: 2, url: "https://cdn/f/2.jpg", key: "k2" },
+      { scene_index: 3, url: "https://cdn/f/3.jpg", key: "k3" },
+    ],
+  };
+  const r = unwrapStoryboardResponse(raw);
+  // No index-shift: shot #2 (the failed one) must remain at position 1, and
+  // shot #3's image must still be at position 2 — not compacted upward.
+  assert.equal(r.frames.length, 4);
+  assert.equal(r.frames[0], "https://cdn/f/0.jpg");
+  assert.equal(r.frames[1], null);
+  assert.equal(r.frames[2], "https://cdn/f/2.jpg");
+  assert.equal(r.frames[3], "https://cdn/f/3.jpg");
+});
+
+test("unwrapDirectorPollResponse keeps ROOT-level progress and job.error_message", () => {
+  const raw = {
+    ok: true,
+    progress: 42,
+    job: {
+      id: "j1",
+      status: "running",
+      final_video_url: null,
+      error_message: "provider timeout",
+    },
+    shots: [],
+  };
+  const r = unwrapDirectorPollResponse(raw);
+  assert.equal(r.progress, 42); // root, NOT job.progress
+  assert.equal(r.job.error_message, "provider timeout");
+  assert.equal(r.job.status, "running");
+});
+
+test("unwrapDirectorCompleteResponse keeps asset_id for downstream UI state", () => {
+  const r = unwrapDirectorCompleteResponse({ ok: true, asset_id: "ast_123" });
+  assert.equal(r.asset_id, "ast_123");
+  // Pure UI reducer for the JobPanel state — asset_id must survive the merge.
+  const jobState = { id: "j1", status: "done", videoUrl: "https://cdn/v/1.mp4" } as {
+    id: string; status: string; videoUrl?: string; assetId?: string;
+  };
+  const next = r.asset_id ? { ...jobState, assetId: r.asset_id } : jobState;
+  assert.equal(next.assetId, "ast_123");
+});
+
+test("surprise submit defaults realism to 'photoreal' (backend only recognizes photoreal)", () => {
+  const preview = buildSurprisePreviewPayload({
+    shopId: "s1", videoType: "store_tour", aspect: "9:16", imageUrls: ["u1"],
+  });
+  assert.equal(preview.realism, "photoreal");
+
+  const submit = buildSurpriseSubmitPayload({
+    shopId: "s1", aspect: "9:16",
+    preview: { script: SCRIPT, assets: [{ id: "a1", url: "u1" }], style: "steady" },
+  });
+  assert.equal(submit.realism, "photoreal");
+  // And still echoes preview references.
+  assert.equal((submit as { script: unknown }).script, SCRIPT);
 });

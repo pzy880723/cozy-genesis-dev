@@ -97,8 +97,15 @@ function VideoFlow() {
 
   // Step 05: storyboard + render
   const [sbBusy, setSbBusy] = useState(false);
-  const [frames, setFrames] = useState<string[]>([]);
-  const [job, setJob] = useState<{ id: string; status: string; videoUrl?: string; error?: string; progress?: number } | null>(null);
+  const [frames, setFrames] = useState<(string | null)[]>([]);
+  const [job, setJob] = useState<{
+    id: string;
+    status: string;
+    videoUrl?: string;
+    error?: string;
+    progress?: number;
+    assetId?: string;
+  } | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -115,8 +122,9 @@ function VideoFlow() {
         const next = await directorApi.pollJob(jobId);
         const nextStatus = next.job.status;
         const finalUrl = (next.job.final_video_url as string | null | undefined) ?? undefined;
-        const nextErr = (next.job as { error?: string }).error;
-        const nextProgress = (next.job as { progress?: number }).progress;
+        // error_message lives on `job`; progress is at the ROOT.
+        const nextErr = (next.job.error_message as string | null | undefined) ?? undefined;
+        const nextProgress = next.progress;
         setJob((prev) => prev && prev.id === jobId ? ({
           ...prev,
           status: nextStatus,
@@ -127,7 +135,12 @@ function VideoFlow() {
         if (nextStatus === "done") {
           if (finalUrl) {
             try {
-              await directorApi.completeJob({ jobId, finalVideoUrl: finalUrl });
+              const done = await directorApi.completeJob({ jobId, finalVideoUrl: finalUrl });
+              if (done.asset_id) {
+                setJob((prev) => prev && prev.id === jobId
+                  ? { ...prev, assetId: done.asset_id }
+                  : prev);
+              }
             } catch (e) { console.warn("[director-complete-job]", e); }
           } else {
             console.warn("[director-poll-job] status=done but final_video_url missing");
@@ -177,9 +190,12 @@ function VideoFlow() {
       const r = await directorApi.generateStoryboard({
         shopId,
         script, // pass original hook+scenes+outro script
-        imageUrls,
-        aspect,
+        pickedAssets,
+        // Same character choice as the eventual render — storyboard must
+        // reuse it so the reference character matches every scene image.
+        selectedCharacter: characterMode === "library" ? selectedCharacter : null,
         style,
+        realism,
       });
       const nextClips = clipsFromScript(r.script);
       if (nextClips.length !== clips.length) {
@@ -220,7 +236,8 @@ function VideoFlow() {
     } finally { setSubmitting(false); }
   };
 
-  const sbReady = clips.length > 0 && frames.length === clips.length;
+  const framesReady = frames.filter((f) => !!f).length;
+  const sbReady = clips.length > 0 && framesReady === clips.length;
   const totalDuration = clips.reduce((n, s) => n + (Number(s.duration_s) || 0), 0);
 
   return (
@@ -449,7 +466,7 @@ function VideoFlow() {
         <StepPanel
           num="05"
           title="分镜图 & 渲染出片"
-          hint={script ? `${Math.min(frames.length, shotCount)}/${shotCount} 分镜就绪` : "等待脚本"}
+          hint={script ? `${Math.min(framesReady, shotCount)}/${shotCount} 分镜就绪` : "等待脚本"}
           actions={
             <button
               onClick={genStoryboard}
@@ -561,11 +578,13 @@ function ScriptShotList({ script, clips }: { script: DirectorScript; clips: Dire
   );
 }
 
-function StoryboardList({ clips, frames, sbBusy }: { clips: DirectorClip[]; frames: string[]; sbBusy: boolean }) {
+function StoryboardList({ clips, frames, sbBusy }: { clips: DirectorClip[]; frames: (string | null)[]; sbBusy: boolean }) {
   return (
     <div className="grid gap-2">
       {clips.map((s, i) => {
-        const url = frames[i];
+        // Positional lookup — frames must NEVER be filtered/compacted upstream,
+        // otherwise shot #2's storyboard would render at shot #1's slot.
+        const url = frames[i] ?? null;
         return (
           <div key={i} className="flex gap-3 rounded-md border border-border bg-card p-3">
             <div className="h-24 w-24 shrink-0 overflow-hidden rounded-md bg-secondary">
@@ -595,7 +614,7 @@ function StoryboardList({ clips, frames, sbBusy }: { clips: DirectorClip[]; fram
   );
 }
 
-function JobPanel({ job, onReset }: { job: { id: string; status: string; videoUrl?: string; error?: string; progress?: number }; onReset: () => void }) {
+function JobPanel({ job, onReset }: { job: { id: string; status: string; videoUrl?: string; error?: string; progress?: number; assetId?: string }; onReset: () => void }) {
   const failed = job.status === "failed";
   const done = job.status === "done";
   const pct = typeof job.progress === "number" ? Math.round(job.progress) : done ? 100 : 30;
@@ -617,6 +636,22 @@ function JobPanel({ job, onReset }: { job: { id: string; status: string; videoUr
       )}
       {done && job.videoUrl && (
         <video src={job.videoUrl} controls playsInline className="mt-3 max-h-96 w-full rounded-md bg-black" />
+      )}
+      {done && job.assetId && (
+        <div className="mt-3 flex items-center gap-2 text-[11px]">
+          <span className="rounded bg-emerald-50 px-1.5 py-0.5 font-bold text-emerald-700 border border-emerald-200">
+            已入库
+          </span>
+          <span className="font-mono text-muted-foreground">asset · {job.assetId}</span>
+          <Link
+            to="/assets"
+            className="ml-auto inline-flex h-7 items-center gap-1 rounded-md border border-border bg-white px-2 font-bold text-graphite hover:bg-secondary"
+          >去素材库</Link>
+          <Link
+            to="/publish"
+            className="inline-flex h-7 items-center gap-1 rounded-md bg-primary px-2 font-bold text-primary-foreground hover:opacity-90"
+          >去发布中心</Link>
+        </div>
       )}
       {failed && (
         <div className="mt-3 space-y-2">
