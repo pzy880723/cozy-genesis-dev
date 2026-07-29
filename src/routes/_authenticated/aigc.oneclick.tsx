@@ -4,12 +4,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AppShell } from "@/components/app/AppShell";
 import { PageHeader, Panel } from "@/components/app/PageHeader";
 import { shopsApi } from "@/api/shops";
-import {
-  aigcApi,
-  ONECLICK_MAX_REFS,
-  type RenderJob,
-  type Script,
-} from "@/api/aigc";
+import { aigcApi, ONECLICK_MAX_REFS } from "@/api/aigc";
+import { surpriseApi, type SurprisePreview } from "@/api/surprise";
+import { toImageUrls } from "@/api/director";
 import {
   ALL_CATEGORY,
   buildCategoryOptions,
@@ -30,10 +27,6 @@ export const Route = createFileRoute("/_authenticated/aigc/oneclick")({
 });
 
 const ASPECTS = ["9:16", "1:1", "16:9"] as const;
-const MODELS = [
-  { id: "seedance-2-lite", label: "Fast（默认）", hint: "速度优先 · 一分钟出片" },
-  { id: "seedance-2-pro", label: "PRO", hint: "写实最佳 · 略慢" },
-] as const;
 
 type Phase = "idle" | "scripting" | "designing" | "rendering" | "done" | "failed";
 
@@ -65,26 +58,36 @@ function OneClickPage() {
   const [pickShortage, setPickShortage] = useState<string | undefined>();
 
   const [aspect, setAspect] = useState<(typeof ASPECTS)[number]>("9:16");
-  const [modelId, setModelId] = useState<string>(MODELS[0].id);
 
   const [phase, setPhase] = useState<Phase>("idle");
-  const [script, setScript] = useState<Script | null>(null);
-  const [job, setJob] = useState<RenderJob | null>(null);
+  const [preview, setPreview] = useState<SurprisePreview | null>(null);
+  const [job, setJob] = useState<{ id: string; progress?: number; videoUrl?: string; error?: string } | null>(null);
   const [errMsg, setErrMsg] = useState<string>("");
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // 渲染轮询
+  // 渲染轮询（poll-marketing-video）
   useEffect(() => {
     if (!job || phase !== "rendering") return;
+    const jobId = job.id;
     pollRef.current = setInterval(async () => {
-      const next = await aigcApi.pollRenderJob(job.id, job.startedAt, job.progress.total);
-      setJob(next);
-      if (next.phase === "done") setPhase("done");
-      if (next.phase === "failed") {
-        setErrMsg(next.error ?? "渲染失败");
+      try {
+        const next = await surpriseApi.poll(jobId);
+        setJob((prev) => prev && prev.id === jobId ? ({
+          ...prev,
+          progress: typeof next.progress === "number" ? next.progress : prev.progress,
+          videoUrl: (next.video_url as string | undefined) ?? prev.videoUrl,
+          error: (next.error as string | undefined) ?? prev.error,
+        }) : prev);
+        if (next.status === "done") setPhase("done");
+        if (next.status === "failed") {
+          setErrMsg((next.error as string | undefined) ?? "渲染失败");
+          setPhase("failed");
+        }
+      } catch (e: any) {
+        setErrMsg(e?.message ?? "轮询失败");
         setPhase("failed");
       }
-    }, 1200);
+    }, 2500);
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, [job?.id, phase]);
 
@@ -108,22 +111,27 @@ function OneClickPage() {
   const generate = async () => {
     if (!canGenerate) return;
     setErrMsg("");
-    setScript(null);
+    setPreview(null);
     setJob(null);
+    const imageUrls = toImageUrls(picked);
+    if (imageUrls.length === 0) {
+      setErrMsg("选中的素材缺少图片 URL");
+      setPhase("failed");
+      return;
+    }
     try {
+      // ① AI 编剧 + 参考图确认（preview=true）
       setPhase("scripting");
-      await new Promise((r) => setTimeout(r, 600));
+      const prev = await surpriseApi.preview({
+        shopId, videoType: type, category, aspect, imageUrls, duration: 15,
+      });
+      setPreview(prev);
+      // ② 一次性提交完整 15 秒（preview=false）
       setPhase("designing");
-      const res = await aigcApi.oneClickGenerate({
-        shopId, type, category, assetIds: picked.map((a) => a.id), aspect, modelId,
+      const sub = await surpriseApi.submit({
+        shopId, videoType: type, category, aspect, imageUrls, duration: 15,
       });
-      setScript(res.script);
-      setJob({
-        id: res.jobId,
-        phase: "queued",
-        progress: { done: 0, total: res.script.scenes.length },
-        startedAt: Date.now(),
-      });
+      setJob({ id: sub.job_id, progress: 0 });
       setPhase("rendering");
     } catch (e: any) {
       setErrMsg(e?.message ?? "一键生成失败");
@@ -132,7 +140,7 @@ function OneClickPage() {
   };
 
   const reset = () => {
-    setPhase("idle"); setJob(null); setScript(null); setErrMsg("");
+    setPhase("idle"); setJob(null); setPreview(null); setErrMsg("");
   };
 
   const categoryOptions = buildCategoryOptions(profile);
@@ -304,12 +312,9 @@ function OneClickPage() {
                 options={ASPECTS.map((a) => ({ v: a, label: a }))}
                 onChange={(v) => setAspect(v as any)}
               />
-              <ChoiceRow
-                label="渲染模型"
-                value={modelId}
-                options={MODELS.map((m) => ({ v: m.id, label: `${m.label} · ${m.hint}` }))}
-                onChange={(v) => setModelId(v)}
-              />
+              <div className="text-[11px] font-medium text-muted-foreground self-end">
+                模型 · Seedance 参考脚本 + 参考图（一次生成 15 秒）
+              </div>
             </div>
             <div className="flex items-center gap-3 border-t border-border pt-4">
               <button
@@ -333,11 +338,10 @@ function OneClickPage() {
             {phase !== "idle" && (
               <ResultPanel
                 phase={phase}
-                script={script}
+                preview={preview}
                 job={job}
                 errMsg={errMsg}
                 onRetry={() => { reset(); setTimeout(generate, 50); }}
-                onFallbackFast={() => { setModelId("seedance-2-lite"); reset(); setTimeout(generate, 50); }}
                 onSwapPics={() => { reset(); autoPick(); }}
               />
             )}
@@ -385,14 +389,13 @@ const PHASE_TEXT: Record<Phase, string> = {
 };
 
 function ResultPanel({
-  phase, script, job, errMsg, onRetry, onFallbackFast, onSwapPics,
+  phase, preview, job, errMsg, onRetry, onSwapPics,
 }: {
   phase: Phase;
-  script: Script | null;
-  job: RenderJob | null;
+  preview: SurprisePreview | null;
+  job: { id: string; progress?: number; videoUrl?: string; error?: string } | null;
   errMsg: string;
   onRetry: () => void;
-  onFallbackFast: () => void;
   onSwapPics: () => void;
 }) {
   const failed = phase === "failed";
@@ -405,7 +408,7 @@ function ResultPanel({
   ];
   const order: Phase[] = ["scripting", "designing", "rendering", "done"];
   const cur = order.indexOf(phase);
-  const pct = job?.progress.total ? Math.round((job.progress.done / job.progress.total) * 100) : 0;
+  const pct = typeof job?.progress === "number" ? Math.round(job.progress) : done ? 100 : 0;
 
   return (
     <div className={cn(
@@ -420,9 +423,7 @@ function ResultPanel({
             : <Loader2 className="h-4 w-4 animate-spin text-primary" />}
         <span className="text-sm font-black">{PHASE_TEXT[phase]}</span>
         {job && phase === "rendering" && (
-          <span className="ml-auto text-[11px] font-bold text-graphite">
-            {job.progress.done}/{job.progress.total} 镜 · {pct}%
-          </span>
+          <span className="ml-auto text-[11px] font-bold text-graphite">{pct}%</span>
         )}
       </div>
 
@@ -448,13 +449,16 @@ function ResultPanel({
         </div>
       )}
 
-      {script && (
+      {preview?.script && (
         <details className="mt-3 rounded border border-border bg-white p-2 text-xs">
-          <summary className="cursor-pointer font-black">脚本预览 · {script.title}</summary>
+          <summary className="cursor-pointer font-black">
+            脚本预览{preview.script.title ? ` · ${preview.script.title}` : ""}
+          </summary>
           <ul className="mt-2 space-y-1">
-            {script.scenes.map((sc) => (
-              <li key={sc.id} className="text-[11px] text-foreground/80">
-                <span className="font-bold text-primary">{sc.time}</span> · {sc.visual} ｜ {sc.voice}
+            {(preview.script.shots ?? []).map((sc: any, i: number) => (
+              <li key={i} className="text-[11px] text-foreground/80">
+                <span className="font-bold text-primary">#{sc.shot_index ?? i}</span> · {sc.scene ?? sc.visual ?? ""}
+                {sc.dialogue ? ` ｜ ${sc.dialogue}` : ""}
               </li>
             ))}
           </ul>
@@ -484,9 +488,8 @@ function ResultPanel({
 
       {failed && (
         <div className="mt-3 space-y-2">
-          <div className="text-xs text-amber-900">{errMsg || "渲染异常，可尝试降配后重试。"}</div>
+          <div className="text-xs text-amber-900">{errMsg || "渲染异常，可尝试换图后重试。"}</div>
           <div className="flex flex-wrap gap-2">
-            <button onClick={onFallbackFast} className="inline-flex h-8 items-center gap-1 rounded-md border border-amber-300 bg-white px-3 text-xs font-bold text-amber-800 hover:bg-amber-100">换 Fast 模型重试</button>
             <button onClick={onSwapPics} className="inline-flex h-8 items-center gap-1 rounded-md border border-amber-300 bg-white px-3 text-xs font-bold text-amber-800 hover:bg-amber-100">换一组图</button>
             <button onClick={onRetry} className="inline-flex h-8 items-center gap-1 rounded-md border border-amber-300 bg-white px-3 text-xs font-bold text-amber-800 hover:bg-amber-100">直接重试</button>
           </div>
