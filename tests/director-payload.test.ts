@@ -137,7 +137,10 @@ test("unwrapStoryboardResponse extracts .script and .frames from { ok, script, f
   const raw = {
     ok: true,
     script: SCRIPT,
-    frames: ["https://cdn/f/1.jpg", { url: "https://cdn/f/2.jpg" }],
+    frames: [
+      { scene_index: 0, url: "https://cdn/f/1.jpg", key: "k0" },
+      { scene_index: 1, url: "https://cdn/f/2.jpg", key: "k1" },
+    ],
   };
   const r = unwrapStoryboardResponse(raw);
   assert.equal(r.script, SCRIPT);
