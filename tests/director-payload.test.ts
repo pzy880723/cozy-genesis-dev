@@ -3,22 +3,29 @@ import test from "node:test";
 
 import {
   buildDirectorCreatePayload,
+  buildDirectorCompletePayload,
   buildSurprisePreviewPayload,
   buildSurpriseSubmitPayload,
+  clipsFromScript,
   DEFAULT_DIRECTOR_MODEL,
+  mapSurprisePollStatus,
+  unwrapDirectorPollResponse,
+  unwrapDirectorScriptResponse,
+  unwrapStoryboardResponse,
   type DirectorScript,
   type MarketingCharacter,
   type PickedAssetRef,
 } from "../src/api/director-payload";
 
+// Real backend script shape: hook + scenes[] + outro (durations sum to target).
 const SCRIPT: DirectorScript = {
   title: "探店 · 30s",
-  shots: [
-    { shot_index: 0, duration_s: 6, scene: "门头", action: "推镜", dialogue: "开场", subtitle: "开场", image_index: 0 },
-    { shot_index: 1, duration_s: 8, scene: "货架", action: "环绕", dialogue: "承接", subtitle: "承接", image_index: 1 },
-    { shot_index: 2, duration_s: 7, scene: "试戴", action: "特写", dialogue: "细节", subtitle: "细节", image_index: 2 },
-    { shot_index: 3, duration_s: 9, scene: "结尾", action: "拉远", dialogue: "结尾", subtitle: "结尾", image_index: null },
+  hook: { duration_s: 6, scene: "门头", action: "推镜", dialogue: "开场", subtitle: "开场", image_index: 0 },
+  scenes: [
+    { duration_s: 8, scene: "货架", action: "环绕", dialogue: "承接", subtitle: "承接", image_index: 1 },
+    { duration_s: 7, scene: "试戴", action: "特写", dialogue: "细节", subtitle: "细节", image_index: 2 },
   ],
+  outro: { duration_s: 9, scene: "结尾", action: "拉远", dialogue: "结尾", subtitle: "结尾", image_index: null },
   meta: { generated_by: "generate-marketing-video-script" },
 };
 
@@ -48,10 +55,15 @@ test("director create payload preserves original script, uses selected_character
     characterMode: "library",
     selectedCharacter: CHARACTER,
   });
-  // Script is passed through verbatim — do NOT collapse into 3×5s.
+  // Script must be passed through by reference — do NOT collapse into 3×5s.
   assert.equal(body.script, SCRIPT);
-  assert.equal((body.script as DirectorScript).shots.length, 4);
-  assert.deepEqual((body.script as DirectorScript).shots.map((s) => s.duration_s), [6, 8, 7, 9]);
+  const flat = clipsFromScript(body.script as DirectorScript);
+  assert.equal(flat.length, 4);
+  assert.deepEqual(flat.map((s) => s.duration_s), [6, 8, 7, 9]);
+  // The hook/scenes/outro structure must survive unchanged.
+  assert.equal((body.script as DirectorScript).hook.duration_s, 6);
+  assert.equal((body.script as DirectorScript).scenes.length, 2);
+  assert.equal((body.script as DirectorScript).outro.duration_s, 9);
   assert.equal(body.aspect, "9:16");
   assert.equal(body.character_mode, "library");
   assert.equal(body.selected_character, CHARACTER); // named selected_character, NOT character
@@ -75,7 +87,7 @@ test("character_mode=auto omits selected_character entirely", () => {
   assert.ok(!("selected_character" in body), "auto mode must NOT send selected_character");
 });
 
-test("surprise (BOOMER 帮我拍) uses the single 15s preview=false path, not director-create-job", () => {
+test("surprise (BOOMER 帮我拍) submit echoes preview.script/assets/style by reference", () => {
   const preview = buildSurprisePreviewPayload({
     shopId: "shop_zxth",
     videoType: "store_tour",
@@ -84,20 +96,76 @@ test("surprise (BOOMER 帮我拍) uses the single 15s preview=false path, not di
   });
   assert.equal(preview.preview, true);
   assert.equal(preview.duration, 15);
+  assert.equal(preview.video_type, "store_tour");
+
+  // Simulated preview response from surprise-marketing-video.
+  const previewResponse = {
+    script: SCRIPT,
+    assets: [{ id: "a1", url: "https://cdn/x/1.jpg" }],
+    style: "steady",
+  };
 
   const submit = buildSurpriseSubmitPayload({
     shopId: "shop_zxth",
-    videoType: "store_tour",
     aspect: "9:16",
-    imageUrls: ["https://cdn/x/1.jpg", "https://cdn/x/2.jpg"],
+    preview: previewResponse,
   });
   assert.equal(submit.preview, false);
   assert.equal(submit.duration, 15);
-  assert.equal(submit.video_type, "store_tour");
-  assert.deepEqual(submit.image_urls, ["https://cdn/x/1.jpg", "https://cdn/x/2.jpg"]);
-  // Ensure the surprise submit body does NOT carry director-only fields —
-  // this flow must remain a single-shot 15s Seedance render.
-  assert.ok(!("script" in submit), "surprise submit must not include a director script");
-  assert.ok(!("picked_assets" in submit), "surprise submit must not include picked_assets");
+  // Same-object echo — the render job must use the exact previewed content.
+  assert.equal(submit.script, previewResponse.script);
+  assert.equal(submit.assets, previewResponse.assets);
+  assert.equal(submit.picked_assets, previewResponse.assets);
+  assert.equal(submit.style, previewResponse.style);
+  // Must NOT carry director-only fields.
   assert.ok(!("character_mode" in submit), "surprise submit must not include character_mode");
+  assert.ok(!("selected_character" in submit), "surprise submit must not include selected_character");
+});
+
+test("unwrapDirectorScriptResponse extracts .script from { success, script }", () => {
+  const raw = { success: true, script: SCRIPT };
+  const s = unwrapDirectorScriptResponse(raw);
+  assert.equal(s, SCRIPT);
+  assert.throws(() => unwrapDirectorScriptResponse({ success: false, error: "boom" }), /boom/);
+  assert.throws(() => unwrapDirectorScriptResponse({}), /未返回 script/);
+});
+
+test("unwrapStoryboardResponse extracts .script and .frames from { ok, script, frames }", () => {
+  const raw = {
+    ok: true,
+    script: SCRIPT,
+    frames: ["https://cdn/f/1.jpg", { url: "https://cdn/f/2.jpg" }],
+  };
+  const r = unwrapStoryboardResponse(raw);
+  assert.equal(r.script, SCRIPT);
+  assert.deepEqual(r.frames, ["https://cdn/f/1.jpg", "https://cdn/f/2.jpg"]);
+  assert.throws(() => unwrapStoryboardResponse({ ok: false, error: "bad" }), /bad/);
+});
+
+test("unwrapDirectorPollResponse reads job.status and final_video_url (not root-level)", () => {
+  const raw = {
+    ok: true,
+    job: { id: "j1", status: "done", final_video_url: "https://cdn/v/final.mp4" },
+    shots: [{ shot_index: 0 }, { shot_index: 1 }],
+  };
+  const r = unwrapDirectorPollResponse(raw);
+  assert.equal(r.job.status, "done");
+  assert.equal(r.job.final_video_url, "https://cdn/v/final.mp4");
+  assert.equal(r.shots.length, 2);
+  assert.throws(() => unwrapDirectorPollResponse({ ok: true }), /job\.status/);
+});
+
+test("director-complete-job payload requires final_video_url", () => {
+  const body = buildDirectorCompletePayload({ jobId: "j1", finalVideoUrl: "https://cdn/v/final.mp4" });
+  assert.equal(body.job_id, "j1");
+  assert.equal(body.final_video_url, "https://cdn/v/final.mp4");
+  assert.throws(() => buildDirectorCompletePayload({ jobId: "j1", finalVideoUrl: "" }), /final_video_url/);
+});
+
+test("poll-marketing-video 'succeeded' status maps to 'done' for the surprise flow", () => {
+  assert.equal(mapSurprisePollStatus("succeeded"), "done");
+  assert.equal(mapSurprisePollStatus("running"), "running");
+  assert.equal(mapSurprisePollStatus("failed"), "failed");
+  assert.equal(mapSurprisePollStatus("ready_to_stitch"), "ready_to_stitch");
+  assert.equal(mapSurprisePollStatus(undefined), "unknown");
 });
