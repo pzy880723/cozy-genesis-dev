@@ -132,10 +132,26 @@ export type DirectorJob = {
 export type DirectorPollResult = {
   job: DirectorJob;
   shots: unknown[];
-  /** Root-level progress (0–100) — the backend puts it OUTSIDE `job`. */
-  progress?: number;
+  /**
+   * Root-level progress — the backend puts it OUTSIDE `job` as an object
+   * `{ done, total, failed }`, NOT a 0–100 number. UI must compute
+   * percentage as `total > 0 ? done/total*100 : 0`.
+   */
+  progress?: DirectorProgress;
   raw: Record<string, unknown>;
 };
+
+export type DirectorProgress = {
+  done: number;
+  total: number;
+  failed: number;
+};
+
+export function directorProgressPercent(p: DirectorProgress | null | undefined): number {
+  if (!p || typeof p.total !== "number" || p.total <= 0) return 0;
+  const done = typeof p.done === "number" ? p.done : 0;
+  return Math.round((done / p.total) * 100);
+}
 
 /** Unwrap generate-marketing-video-script → { success, script }. */
 export function unwrapDirectorScriptResponse(raw: unknown): DirectorScript {
@@ -197,7 +213,7 @@ export function unwrapDirectorPollResponse(raw: unknown): DirectorPollResult {
     ok?: boolean;
     job?: DirectorJob;
     shots?: unknown[];
-    progress?: number;
+    progress?: unknown;
     error?: string;
   };
   if (r && r.ok === false) {
@@ -206,10 +222,19 @@ export function unwrapDirectorPollResponse(raw: unknown): DirectorPollResult {
   if (!r?.job || typeof r.job !== "object" || !r.job.status) {
     throw new Error("director-poll-job 响应缺少 job.status");
   }
+  let progress: DirectorProgress | undefined;
+  const p = r.progress as Partial<DirectorProgress> | undefined;
+  if (p && typeof p === "object" && typeof p.total === "number") {
+    progress = {
+      done: typeof p.done === "number" ? p.done : 0,
+      total: p.total,
+      failed: typeof p.failed === "number" ? p.failed : 0,
+    };
+  }
   return {
     job: r.job,
     shots: Array.isArray(r.shots) ? r.shots : [],
-    progress: typeof r.progress === "number" ? r.progress : undefined,
+    progress,
     raw: (r ?? {}) as Record<string, unknown>,
   };
 }

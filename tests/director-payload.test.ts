@@ -251,10 +251,11 @@ test("unwrapStoryboardResponse preserves positional alignment when middle frame 
   assert.equal(r.frames[3], "https://cdn/f/3.jpg");
 });
 
-test("unwrapDirectorPollResponse keeps ROOT-level progress and job.error_message", () => {
+test("unwrapDirectorPollResponse keeps ROOT-level progress object and job.error_message", () => {
   const raw = {
     ok: true,
-    progress: 42,
+    // Backend truth: progress is an object, NOT a 0–100 number.
+    progress: { done: 2, total: 5, failed: 0 },
     job: {
       id: "j1",
       status: "running",
@@ -264,9 +265,13 @@ test("unwrapDirectorPollResponse keeps ROOT-level progress and job.error_message
     shots: [],
   };
   const r = unwrapDirectorPollResponse(raw);
-  assert.equal(r.progress, 42); // root, NOT job.progress
+  assert.deepEqual(r.progress, { done: 2, total: 5, failed: 0 });
   assert.equal(r.job.error_message, "provider timeout");
   assert.equal(r.job.status, "running");
+  // UI-facing percentage — no `typeof progress === 'number'` allowed.
+  const p = r.progress!;
+  const pct = p.total > 0 ? Math.round((p.done / p.total) * 100) : 0;
+  assert.equal(pct, 40);
 });
 
 test("unwrapDirectorCompleteResponse keeps asset_id for downstream UI state", () => {

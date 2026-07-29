@@ -103,11 +103,15 @@ function VideoFlow() {
     status: string;
     videoUrl?: string;
     error?: string;
-    progress?: number;
+    progress?: import("@/api/director-payload").DirectorProgress;
     assetId?: string;
   } | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Guard: director-complete-job must fire AT MOST ONCE per job even though
+  // the poll interval may observe status=done multiple times before the
+  // asset_id round-trips back into state.
+  const completedRef = useRef<Set<string>>(new Set());
 
   const imageUrls = useMemo(() => toImageUrls(refAssets), [refAssets]);
   const pickedAssets = useMemo(() => toPickedAssets(refAssets), [refAssets]);
@@ -115,7 +119,11 @@ function VideoFlow() {
   const shotCount = clips.length;
 
   useEffect(() => {
-    if (!job || job.status === "done" || job.status === "failed") return;
+    if (!job) return;
+    if (job.status === "done" || job.status === "failed") {
+      if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+      return;
+    }
     const jobId = job.id;
     pollRef.current = setInterval(async () => {
       try {
@@ -128,11 +136,15 @@ function VideoFlow() {
         setJob((prev) => prev && prev.id === jobId ? ({
           ...prev,
           status: nextStatus,
-          progress: typeof nextProgress === "number" ? nextProgress : prev.progress,
+          progress: nextProgress ?? prev.progress,
           videoUrl: finalUrl ?? prev.videoUrl,
           error: nextErr ?? prev.error,
         }) : prev);
-        if (nextStatus === "done") {
+        if (nextStatus === "done" || nextStatus === "failed") {
+          if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+        }
+        if (nextStatus === "done" && !completedRef.current.has(jobId)) {
+          completedRef.current.add(jobId);
           if (finalUrl) {
             try {
               const done = await directorApi.completeJob({ jobId, finalVideoUrl: finalUrl });
@@ -141,9 +153,14 @@ function VideoFlow() {
                   ? { ...prev, assetId: done.asset_id }
                   : prev);
               }
-            } catch (e) { console.warn("[director-complete-job]", e); }
+            } catch (e) {
+              // Allow retry on next status change if the completion call failed.
+              completedRef.current.delete(jobId);
+              console.warn("[director-complete-job]", e);
+            }
           } else {
             console.warn("[director-poll-job] status=done but final_video_url missing");
+            completedRef.current.delete(jobId);
           }
         }
       } catch (e: any) {
@@ -229,7 +246,7 @@ function VideoFlow() {
         characterMode,
         selectedCharacter: characterMode === "library" ? selectedCharacter : null,
       });
-      setJob({ id: jobId, status: "queued", progress: 0 });
+      setJob({ id: jobId, status: "queued" });
       toast.success("已提交，正在渲染");
     } catch (e: any) {
       toast.error(`提交失败：${e?.message ?? e}`);
@@ -614,10 +631,14 @@ function StoryboardList({ clips, frames, sbBusy }: { clips: DirectorClip[]; fram
   );
 }
 
-function JobPanel({ job, onReset }: { job: { id: string; status: string; videoUrl?: string; error?: string; progress?: number; assetId?: string }; onReset: () => void }) {
+function JobPanel({ job, onReset }: { job: { id: string; status: string; videoUrl?: string; error?: string; progress?: import("@/api/director-payload").DirectorProgress; assetId?: string }; onReset: () => void }) {
   const failed = job.status === "failed";
   const done = job.status === "done";
-  const pct = typeof job.progress === "number" ? Math.round(job.progress) : done ? 100 : 30;
+  const p = job.progress;
+  const computed = p && typeof p.total === "number" && p.total > 0
+    ? Math.round((p.done / p.total) * 100)
+    : null;
+  const pct = computed ?? (done ? 100 : 0);
   return (
     <div className={cn(
       "mt-4 rounded-md border p-4",
