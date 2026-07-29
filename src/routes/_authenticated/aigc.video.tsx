@@ -236,7 +236,8 @@ function VideoFlow() {
     } finally { setSubmitting(false); }
   };
 
-  const sbReady = clips.length > 0 && frames.length === clips.length;
+  const framesReady = frames.filter((f) => !!f).length;
+  const sbReady = clips.length > 0 && framesReady === clips.length;
   const totalDuration = clips.reduce((n, s) => n + (Number(s.duration_s) || 0), 0);
 
   return (
@@ -465,7 +466,7 @@ function VideoFlow() {
         <StepPanel
           num="05"
           title="分镜图 & 渲染出片"
-          hint={script ? `${Math.min(frames.length, shotCount)}/${shotCount} 分镜就绪` : "等待脚本"}
+          hint={script ? `${Math.min(framesReady, shotCount)}/${shotCount} 分镜就绪` : "等待脚本"}
           actions={
             <button
               onClick={genStoryboard}
@@ -613,7 +614,7 @@ function StoryboardList({ clips, frames, sbBusy }: { clips: DirectorClip[]; fram
   );
 }
 
-function JobPanel({ job, onReset }: { job: { id: string; status: string; videoUrl?: string; error?: string; progress?: number }; onReset: () => void }) {
+function JobPanel({ job, onReset }: { job: { id: string; status: string; videoUrl?: string; error?: string; progress?: number; assetId?: string }; onReset: () => void }) {
   const failed = job.status === "failed";
   const done = job.status === "done";
   const pct = typeof job.progress === "number" ? Math.round(job.progress) : done ? 100 : 30;
@@ -635,6 +636,22 @@ function JobPanel({ job, onReset }: { job: { id: string; status: string; videoUr
       )}
       {done && job.videoUrl && (
         <video src={job.videoUrl} controls playsInline className="mt-3 max-h-96 w-full rounded-md bg-black" />
+      )}
+      {done && job.assetId && (
+        <div className="mt-3 flex items-center gap-2 text-[11px]">
+          <span className="rounded bg-emerald-50 px-1.5 py-0.5 font-bold text-emerald-700 border border-emerald-200">
+            已入库
+          </span>
+          <span className="font-mono text-muted-foreground">asset · {job.assetId}</span>
+          <Link
+            to="/assets"
+            className="ml-auto inline-flex h-7 items-center gap-1 rounded-md border border-border bg-white px-2 font-bold text-graphite hover:bg-secondary"
+          >去素材库</Link>
+          <Link
+            to="/publish"
+            className="inline-flex h-7 items-center gap-1 rounded-md bg-primary px-2 font-bold text-primary-foreground hover:opacity-90"
+          >去发布中心</Link>
+        </div>
       )}
       {failed && (
         <div className="mt-3 space-y-2">
