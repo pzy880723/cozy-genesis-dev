@@ -631,10 +631,14 @@ function StoryboardList({ clips, frames, sbBusy }: { clips: DirectorClip[]; fram
   );
 }
 
-function JobPanel({ job, onReset }: { job: { id: string; status: string; videoUrl?: string; error?: string; progress?: number; assetId?: string }; onReset: () => void }) {
+function JobPanel({ job, onReset }: { job: { id: string; status: string; videoUrl?: string; error?: string; progress?: import("@/api/director-payload").DirectorProgress; assetId?: string }; onReset: () => void }) {
   const failed = job.status === "failed";
   const done = job.status === "done";
-  const pct = typeof job.progress === "number" ? Math.round(job.progress) : done ? 100 : 30;
+  const p = job.progress;
+  const computed = p && typeof p.total === "number" && p.total > 0
+    ? Math.round((p.done / p.total) * 100)
+    : null;
+  const pct = computed ?? (done ? 100 : 0);
   return (
     <div className={cn(
       "mt-4 rounded-md border p-4",
