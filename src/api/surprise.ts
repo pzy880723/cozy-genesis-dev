@@ -12,31 +12,53 @@ import { supabase } from "@/integrations/shared-db/client";
 import {
   buildSurprisePreviewPayload,
   buildSurpriseSubmitPayload,
-  type SurpriseInput,
+  mapSurprisePollStatus,
+  type SurprisePreviewInput,
+  type SurprisePreviewPayload,
+  type SurpriseSubmitInput,
 } from "./director-payload";
 
 const USE_MOCKS = import.meta.env.VITE_AIGC_USE_MOCKS === "true";
 
-export type SurprisePreview = {
-  script?: { title?: string; shots?: unknown[] };
-  reference_frames?: string[];
-  [k: string]: unknown;
-};
+/**
+ * Raw surprise preview response. Callers MUST hand this whole object back
+ * to `submit(...)` so the render job uses the exact same script + assets
+ * the user just previewed.
+ */
+export type SurprisePreview = SurprisePreviewPayload;
 
 export type SurpriseSubmitResult = { job_id: string } & Record<string, unknown>;
 
+export type SurprisePollResult = {
+  /** Normalized: "done" | "failed" | "running" | "queued" | "ready_to_stitch" | "stitching" | ... */
+  status: string;
+  video_url?: string;
+  progress?: number;
+  error?: string;
+  raw: Record<string, unknown>;
+};
+
 export const surpriseApi = {
-  async preview(input: SurpriseInput): Promise<SurprisePreview> {
-    if (USE_MOCKS) return { script: { title: "mock", shots: [] }, reference_frames: input.imageUrls };
-    const { data, error } = await supabase.functions.invoke<SurprisePreview>(
+  async preview(input: SurprisePreviewInput): Promise<SurprisePreview> {
+    if (USE_MOCKS) {
+      return {
+        script: { title: "mock", hook: {}, scenes: [], outro: {} },
+        assets: input.imageUrls.map((url, i) => ({ id: `mock_${i}`, url })),
+        style: "steady",
+      } as SurprisePreview;
+    }
+    const { data, error } = await supabase.functions.invoke(
       "surprise-marketing-video",
       { body: buildSurprisePreviewPayload(input) },
     );
     if (error) throw error;
-    return (data ?? {}) as SurprisePreview;
+    if (!data || typeof data !== "object") {
+      throw new Error("surprise-marketing-video preview 未返回数据");
+    }
+    return data as SurprisePreview;
   },
 
-  async submit(input: SurpriseInput): Promise<SurpriseSubmitResult> {
+  async submit(input: SurpriseSubmitInput): Promise<SurpriseSubmitResult> {
     if (USE_MOCKS) return { job_id: `mock_${Date.now()}` };
     const { data, error } = await supabase.functions.invoke<SurpriseSubmitResult>(
       "surprise-marketing-video",
@@ -47,18 +69,19 @@ export const surpriseApi = {
     return data;
   },
 
-  async poll(jobId: string): Promise<{
-    status: string;
-    progress?: number;
-    video_url?: string;
-    error?: string;
-    [k: string]: unknown;
-  }> {
-    if (USE_MOCKS) return { status: "done", progress: 100 };
+  async poll(jobId: string): Promise<SurprisePollResult> {
+    if (USE_MOCKS) return { status: "done", progress: 100, raw: {} };
     const { data, error } = await supabase.functions.invoke("poll-marketing-video", {
       body: { job_id: jobId },
     });
     if (error) throw error;
-    return (data ?? {}) as { status: string };
+    const raw = (data ?? {}) as Record<string, unknown>;
+    return {
+      status: mapSurprisePollStatus(raw.status as string | undefined),
+      video_url: raw.video_url as string | undefined,
+      progress: typeof raw.progress === "number" ? raw.progress : undefined,
+      error: raw.error as string | undefined,
+      raw,
+    };
   },
 };
