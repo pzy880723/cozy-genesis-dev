@@ -51,7 +51,6 @@ function ErpSsoPage() {
           return;
         }
         const { error } = await supabase.auth.verifyOtp({
-          email: res.email,
           token_hash: res.tokenHash,
           type: "magiclink",
         });
