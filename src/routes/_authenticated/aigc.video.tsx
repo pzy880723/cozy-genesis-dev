@@ -12,6 +12,7 @@ import {
   type DirectorScript,
   type MarketingCharacter,
 } from "@/api/director";
+import { clipsFromScript, type DirectorClip } from "@/api/director-payload";
 import type { Asset } from "@/types";
 import {
   ArrowLeft, Sparkles, RefreshCw, Loader2, X, CheckCircle2,
@@ -96,13 +97,15 @@ function VideoFlow() {
 
   // Step 05: storyboard + render
   const [sbBusy, setSbBusy] = useState(false);
+  const [frames, setFrames] = useState<string[]>([]);
   const [job, setJob] = useState<{ id: string; status: string; videoUrl?: string; error?: string; progress?: number } | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const imageUrls = useMemo(() => toImageUrls(refAssets), [refAssets]);
   const pickedAssets = useMemo(() => toPickedAssets(refAssets), [refAssets]);
-  const shotCount = script?.shots?.length ?? 0;
+  const clips: DirectorClip[] = useMemo(() => clipsFromScript(script), [script]);
+  const shotCount = clips.length;
 
   useEffect(() => {
     if (!job || job.status === "done" || job.status === "failed") return;
@@ -110,15 +113,25 @@ function VideoFlow() {
     pollRef.current = setInterval(async () => {
       try {
         const next = await directorApi.pollJob(jobId);
+        const nextStatus = next.job.status;
+        const finalUrl = (next.job.final_video_url as string | null | undefined) ?? undefined;
+        const nextErr = (next.job as { error?: string }).error;
+        const nextProgress = (next.job as { progress?: number }).progress;
         setJob((prev) => prev && prev.id === jobId ? ({
           ...prev,
-          status: String(next.status ?? prev.status),
-          progress: typeof next.progress === "number" ? next.progress : prev.progress,
-          videoUrl: (next.video_url as string | undefined) ?? prev.videoUrl,
-          error: (next.error as string | undefined) ?? prev.error,
+          status: nextStatus,
+          progress: typeof nextProgress === "number" ? nextProgress : prev.progress,
+          videoUrl: finalUrl ?? prev.videoUrl,
+          error: nextErr ?? prev.error,
         }) : prev);
-        if (next.status === "done") {
-          try { await directorApi.completeJob(jobId); } catch (e) { console.warn("[director-complete-job]", e); }
+        if (nextStatus === "done") {
+          if (finalUrl) {
+            try {
+              await directorApi.completeJob({ jobId, finalVideoUrl: finalUrl });
+            } catch (e) { console.warn("[director-complete-job]", e); }
+          } else {
+            console.warn("[director-poll-job] status=done but final_video_url missing");
+          }
         }
       } catch (e: any) {
         console.error(e);
@@ -144,12 +157,14 @@ function VideoFlow() {
         style: `${style}${realism === "illustration" ? " · illustration" : " · real"}`,
         briefTranscript: brief || undefined,
       });
-      if (!Array.isArray(r?.shots) || r.shots.length === 0) {
+      const flat = clipsFromScript(r);
+      if (flat.length === 0) {
         toast.error("AI 未返回有效镜头，请重试或调整立意");
         return;
       }
-      setScript(r); // preserve as-is
-      toast.success(`已生成 ${r.shots.length} 镜脚本`);
+      setScript(r); // preserve as-is (hook + scenes + outro)
+      setFrames([]);
+      toast.success(`已生成 ${flat.length} 镜脚本`);
     } catch (e: any) {
       toast.error(`脚本生成失败：${e?.message ?? e}`);
     } finally { setScriptBusy(false); }
@@ -161,19 +176,19 @@ function VideoFlow() {
     try {
       const r = await directorApi.generateStoryboard({
         shopId,
-        script, // pass original
+        script, // pass original hook+scenes+outro script
         imageUrls,
         aspect,
         style,
       });
-      // Storyboard function is expected to return the same script structure with
-      // per-shot storyboard urls added. Preserve shot count/order.
-      if (Array.isArray(r?.shots) && r.shots.length === script.shots.length) {
-        setScript(r);
-        toast.success("分镜图已生成");
-      } else {
-        toast.error("分镜返回的镜头数与脚本不一致，已忽略");
+      const nextClips = clipsFromScript(r.script);
+      if (nextClips.length !== clips.length) {
+        toast.error(`分镜镜头数（${nextClips.length}）与脚本（${clips.length}）不一致，已忽略`);
+        return;
       }
+      setScript(r.script);
+      setFrames(r.frames);
+      toast.success("分镜图已生成");
     } catch (e: any) {
       toast.error(`分镜生成失败：${e?.message ?? e}`);
     } finally { setSbBusy(false); }
@@ -205,8 +220,8 @@ function VideoFlow() {
     } finally { setSubmitting(false); }
   };
 
-  const sbReady = !!script && script.shots.every((s: any) => s.storyboard_url || s.storyboardUrl);
-  const totalDuration = script?.shots.reduce((n, s) => n + (Number(s.duration_s) || 0), 0) ?? 0;
+  const sbReady = clips.length > 0 && frames.length === clips.length;
+  const totalDuration = clips.reduce((n, s) => n + (Number(s.duration_s) || 0), 0);
 
   return (
     <AppShell>
@@ -425,7 +440,7 @@ function VideoFlow() {
                 点右上「生成脚本」；AI 编剧会返回精确的分镜列表，每镜的时长与顺序会原样保留。
               </div>
             ) : (
-              <ScriptShotList script={script} />
+              <ScriptShotList script={script} clips={clips} />
             )}
           </div>
         </StepPanel>
@@ -434,7 +449,7 @@ function VideoFlow() {
         <StepPanel
           num="05"
           title="分镜图 & 渲染出片"
-          hint={script ? `${script.shots.filter((s: any) => s.storyboard_url || s.storyboardUrl).length}/${shotCount} 分镜就绪` : "等待脚本"}
+          hint={script ? `${Math.min(frames.length, shotCount)}/${shotCount} 分镜就绪` : "等待脚本"}
           actions={
             <button
               onClick={genStoryboard}
@@ -452,7 +467,7 @@ function VideoFlow() {
                 先在 Step 04 生成脚本。
               </div>
             ) : (
-              <StoryboardList script={script} sbBusy={sbBusy} />
+              <StoryboardList clips={clips} frames={frames} sbBusy={sbBusy} />
             )}
 
             <div className="mt-4 flex items-center gap-3 border-t border-border pt-4">
@@ -519,15 +534,17 @@ function ChoiceRow({ label, value, options, onChange }: { label: string; value: 
   );
 }
 
-function ScriptShotList({ script }: { script: DirectorScript }) {
+function ScriptShotList({ script, clips }: { script: DirectorScript; clips: DirectorClip[] }) {
   return (
     <div className="space-y-2">
       <div className="text-sm font-black">{script.title ?? "AI 脚本"}</div>
       <div className="grid gap-2">
-        {script.shots.map((s: any, i: number) => (
+        {clips.map((s, i) => (
           <div key={i} className="rounded-md border border-border bg-card p-3">
             <div className="flex items-center gap-2">
-              <span className="rounded bg-secondary px-1.5 py-0.5 text-[10px] font-black text-graphite">#{s.shot_index ?? i}</span>
+              <span className="rounded bg-secondary px-1.5 py-0.5 text-[10px] font-black text-graphite">
+                {i === 0 ? "HOOK" : i === clips.length - 1 ? "OUTRO" : `#${i}`}
+              </span>
               <span className="text-[11px] font-bold text-primary">{s.duration_s}s</span>
               {typeof s.image_index === "number" && (
                 <span className="text-[10px] text-muted-foreground">参考图 #{s.image_index + 1}</span>
@@ -544,11 +561,11 @@ function ScriptShotList({ script }: { script: DirectorScript }) {
   );
 }
 
-function StoryboardList({ script, sbBusy }: { script: DirectorScript; sbBusy: boolean }) {
+function StoryboardList({ clips, frames, sbBusy }: { clips: DirectorClip[]; frames: string[]; sbBusy: boolean }) {
   return (
     <div className="grid gap-2">
-      {script.shots.map((s: any, i: number) => {
-        const url: string | undefined = s.storyboard_url ?? s.storyboardUrl;
+      {clips.map((s, i) => {
+        const url = frames[i];
         return (
           <div key={i} className="flex gap-3 rounded-md border border-border bg-card p-3">
             <div className="h-24 w-24 shrink-0 overflow-hidden rounded-md bg-secondary">
@@ -562,7 +579,9 @@ function StoryboardList({ script, sbBusy }: { script: DirectorScript; sbBusy: bo
             </div>
             <div className="flex-1">
               <div className="flex items-center gap-2">
-                <span className="rounded bg-secondary px-1.5 py-0.5 text-[10px] font-black text-graphite">#{s.shot_index ?? i}</span>
+                <span className="rounded bg-secondary px-1.5 py-0.5 text-[10px] font-black text-graphite">
+                  {i === 0 ? "HOOK" : i === clips.length - 1 ? "OUTRO" : `#${i}`}
+                </span>
                 <span className="text-[11px] font-bold text-primary">{s.duration_s}s</span>
               </div>
               <div className="mt-1 text-xs font-bold">{s.scene}</div>

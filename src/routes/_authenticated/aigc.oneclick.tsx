@@ -126,10 +126,10 @@ function OneClickPage() {
         shopId, videoType: type, category, aspect, imageUrls, duration: 15,
       });
       setPreview(prev);
-      // ② 一次性提交完整 15 秒（preview=false）
+      // ② 一次性提交完整 15 秒（preview=false）——必须原样回传 preview 的 script/assets/style
       setPhase("designing");
       const sub = await surpriseApi.submit({
-        shopId, videoType: type, category, aspect, imageUrls, duration: 15,
+        shopId, aspect, duration: 15, preview: prev,
       });
       setJob({ id: sub.job_id, progress: 0 });
       setPhase("rendering");
@@ -449,21 +449,31 @@ function ResultPanel({
         </div>
       )}
 
-      {preview?.script && (
-        <details className="mt-3 rounded border border-border bg-white p-2 text-xs">
-          <summary className="cursor-pointer font-black">
-            脚本预览{preview.script.title ? ` · ${preview.script.title}` : ""}
-          </summary>
-          <ul className="mt-2 space-y-1">
-            {(preview.script.shots ?? []).map((sc: any, i: number) => (
-              <li key={i} className="text-[11px] text-foreground/80">
-                <span className="font-bold text-primary">#{sc.shot_index ?? i}</span> · {sc.scene ?? sc.visual ?? ""}
-                {sc.dialogue ? ` ｜ ${sc.dialogue}` : ""}
-              </li>
-            ))}
-          </ul>
-        </details>
-      )}
+      {preview?.script ? (() => {
+        const s = preview.script as { title?: string; hook?: any; scenes?: any[]; outro?: any };
+        const clips = [
+          ...(s.hook ? [s.hook] : []),
+          ...(Array.isArray(s.scenes) ? s.scenes : []),
+          ...(s.outro ? [s.outro] : []),
+        ];
+        return (
+          <details className="mt-3 rounded border border-border bg-white p-2 text-xs">
+            <summary className="cursor-pointer font-black">
+              脚本预览{s.title ? ` · ${s.title}` : ""}
+            </summary>
+            <ul className="mt-2 space-y-1">
+              {clips.map((sc: any, i: number) => (
+                <li key={i} className="text-[11px] text-foreground/80">
+                  <span className="font-bold text-primary">
+                    {i === 0 ? "HOOK" : i === clips.length - 1 ? "OUTRO" : `#${i}`}
+                  </span> · {sc.scene ?? sc.visual ?? ""}
+                  {sc.dialogue ? ` ｜ ${sc.dialogue}` : ""}
+                </li>
+              ))}
+            </ul>
+          </details>
+        );
+      })() : null}
 
       {done && job?.videoUrl && (
         <div className="mt-3 space-y-3">
