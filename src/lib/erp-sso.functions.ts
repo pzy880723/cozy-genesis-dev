@@ -63,18 +63,17 @@ export const exchangeErpTicket = createServerFn({ method: "POST" })
       return { ok: false as const, error: toUiError("erp_unreachable") };
     }
 
-    let payload:
-      | {
-          ok?: boolean;
-          email?: string;
-          tokenHash?: string;
-          displayName?: string;
-          code?: string;
-          error?: string;
-        }
-      | null = null;
+    type SessionResp = {
+      ok?: boolean;
+      email?: string;
+      tokenHash?: string;
+      displayName?: string;
+      code?: string;
+      error?: string;
+    };
+    let payload: SessionResp | null = null;
     try {
-      payload = (await resp.json()) as typeof payload;
+      payload = (await resp.json()) as SessionResp;
     } catch {
       return { ok: false as const, error: toUiError("erp_bad_response") };
     }
