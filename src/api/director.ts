@@ -6,18 +6,31 @@
 import { supabase } from "@/integrations/shared-db/client";
 import type { Asset } from "@/types";
 import {
+  buildDirectorCompletePayload,
   buildDirectorCreatePayload,
   DEFAULT_DIRECTOR_MODEL,
+  unwrapDirectorPollResponse,
+  unwrapDirectorScriptResponse,
+  unwrapStoryboardResponse,
+  type DirectorClip,
   type DirectorCreateInput,
+  type DirectorJob,
+  type DirectorPollResult,
   type DirectorScript,
-  type DirectorShot,
   type MarketingCharacter,
   type PickedAssetRef,
 } from "./director-payload";
 
 const USE_MOCKS = import.meta.env.VITE_AIGC_USE_MOCKS === "true";
 
-export type { DirectorScript, DirectorShot, MarketingCharacter, PickedAssetRef };
+export type {
+  DirectorClip,
+  DirectorJob,
+  DirectorPollResult,
+  DirectorScript,
+  MarketingCharacter,
+  PickedAssetRef,
+};
 export { DEFAULT_DIRECTOR_MODEL };
 
 export type GenerateScriptInput = {
@@ -32,31 +45,45 @@ export type GenerateScriptInput = {
   briefTranscript?: string;
 };
 
-function throwIfError<T>(data: T, error: unknown): T {
-  if (error) throw error;
-  return data;
-}
-
 function mockScript(input: GenerateScriptInput): DirectorScript {
   // Development-only shape (VITE_AIGC_USE_MOCKS=true) — never used in prod.
-  const per = Math.max(3, Math.round(input.duration / 4));
-  const count = Math.max(2, Math.min(6, Math.floor(input.duration / per)));
-  const shots: DirectorShot[] = Array.from({ length: count }, (_, i) => ({
-    shot_index: i,
-    duration_s: i === count - 1 ? input.duration - per * (count - 1) : per,
+  const remain = Math.max(0, input.duration - 6);
+  const midCount = Math.max(1, Math.min(4, Math.round(remain / 6)));
+  const midDur = midCount > 0 ? Math.floor(remain / midCount) : 0;
+  const scenes: DirectorClip[] = Array.from({ length: midCount }, (_, i) => ({
+    duration_s: i === midCount - 1 ? remain - midDur * (midCount - 1) : midDur,
     scene: `场景 ${i + 1}`,
     action: `镜头动作 ${i + 1}`,
-    dialogue: i === 0 ? "这里是本片首镜口播" : "承接镜头旁白",
-    subtitle: i === 0 ? "开场字幕" : `第 ${i + 1} 镜字幕`,
-    image_index: input.imageUrls.length > 0 ? i % input.imageUrls.length : null,
+    dialogue: "承接镜头旁白",
+    subtitle: `第 ${i + 1} 镜字幕`,
+    image_index: input.imageUrls.length > 0 ? (i + 1) % input.imageUrls.length : null,
   }));
-  return { title: `${input.videoType} · ${input.duration}s`, shots };
+  return {
+    title: `${input.videoType} · ${input.duration}s`,
+    hook: {
+      duration_s: 3,
+      scene: "开场",
+      action: "推镜进入",
+      dialogue: "这里是本片首镜口播",
+      subtitle: "开场字幕",
+      image_index: input.imageUrls.length > 0 ? 0 : null,
+    },
+    scenes,
+    outro: {
+      duration_s: 3,
+      scene: "收尾",
+      action: "拉远收尾",
+      dialogue: "结尾旁白",
+      subtitle: "结尾字幕",
+      image_index: input.imageUrls.length > 0 ? input.imageUrls.length - 1 : null,
+    },
+  };
 }
 
 export const directorApi = {
   async generateScript(input: GenerateScriptInput): Promise<DirectorScript> {
     if (USE_MOCKS) return mockScript(input);
-    const { data, error } = await supabase.functions.invoke<DirectorScript>(
+    const { data, error } = await supabase.functions.invoke(
       "generate-marketing-video-script",
       {
         body: {
@@ -72,7 +99,8 @@ export const directorApi = {
         },
       },
     );
-    return throwIfError(data as DirectorScript, error);
+    if (error) throw error;
+    return unwrapDirectorScriptResponse(data);
   },
 
   async generateStoryboard(input: {
@@ -81,15 +109,14 @@ export const directorApi = {
     imageUrls: string[];
     aspect: string;
     style?: string;
-  }): Promise<DirectorScript> {
-    if (USE_MOCKS) return input.script;
-    const { data, error } = await supabase.functions.invoke<DirectorScript>(
+  }): Promise<{ script: DirectorScript; frames: string[] }> {
+    if (USE_MOCKS) return { script: input.script, frames: [] };
+    const { data, error } = await supabase.functions.invoke(
       "storyboard-marketing-video",
       {
         body: {
           shop_id: input.shopId,
-          // Pass through the ORIGINAL script so the storyboard function can
-          // pair each shot with a frame without mutating shot count/order.
+          // Pass the ORIGINAL script object verbatim.
           script: input.script,
           image_urls: input.imageUrls,
           aspect: input.aspect,
@@ -97,7 +124,8 @@ export const directorApi = {
         },
       },
     );
-    return throwIfError(data as DirectorScript, error);
+    if (error) throw error;
+    return unwrapStoryboardResponse(data);
   },
 
   async createJob(input: DirectorCreateInput): Promise<{ jobId: string }> {
@@ -113,25 +141,26 @@ export const directorApi = {
     return { jobId };
   },
 
-  async pollJob(jobId: string): Promise<{
-    status: string;
-    progress?: number;
-    video_url?: string;
-    error?: string;
-    [k: string]: unknown;
-  }> {
-    if (USE_MOCKS) return { status: "done", progress: 100, video_url: "" };
+  async pollJob(jobId: string): Promise<DirectorPollResult> {
+    if (USE_MOCKS) {
+      return {
+        job: { id: jobId, status: "done", final_video_url: "" },
+        shots: [],
+        raw: {},
+      };
+    }
     const { data, error } = await supabase.functions.invoke("director-poll-job", {
       body: { job_id: jobId },
     });
     if (error) throw error;
-    return (data ?? {}) as { status: string };
+    return unwrapDirectorPollResponse(data);
   },
 
-  async completeJob(jobId: string): Promise<Record<string, unknown>> {
-    if (USE_MOCKS) return {};
+  async completeJob(input: { jobId: string; finalVideoUrl: string }): Promise<Record<string, unknown>> {
+    const body = buildDirectorCompletePayload(input);
+    if (USE_MOCKS) return { asset_id: `mock_asset_${Date.now()}` };
     const { data, error } = await supabase.functions.invoke("director-complete-job", {
-      body: { job_id: jobId },
+      body,
     });
     if (error) throw error;
     return (data ?? {}) as Record<string, unknown>;
