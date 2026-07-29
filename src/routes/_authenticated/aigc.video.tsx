@@ -97,8 +97,15 @@ function VideoFlow() {
 
   // Step 05: storyboard + render
   const [sbBusy, setSbBusy] = useState(false);
-  const [frames, setFrames] = useState<string[]>([]);
-  const [job, setJob] = useState<{ id: string; status: string; videoUrl?: string; error?: string; progress?: number } | null>(null);
+  const [frames, setFrames] = useState<(string | null)[]>([]);
+  const [job, setJob] = useState<{
+    id: string;
+    status: string;
+    videoUrl?: string;
+    error?: string;
+    progress?: number;
+    assetId?: string;
+  } | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -115,8 +122,9 @@ function VideoFlow() {
         const next = await directorApi.pollJob(jobId);
         const nextStatus = next.job.status;
         const finalUrl = (next.job.final_video_url as string | null | undefined) ?? undefined;
-        const nextErr = (next.job as { error?: string }).error;
-        const nextProgress = (next.job as { progress?: number }).progress;
+        // error_message lives on `job`; progress is at the ROOT.
+        const nextErr = (next.job.error_message as string | null | undefined) ?? undefined;
+        const nextProgress = next.progress;
         setJob((prev) => prev && prev.id === jobId ? ({
           ...prev,
           status: nextStatus,
@@ -127,7 +135,12 @@ function VideoFlow() {
         if (nextStatus === "done") {
           if (finalUrl) {
             try {
-              await directorApi.completeJob({ jobId, finalVideoUrl: finalUrl });
+              const done = await directorApi.completeJob({ jobId, finalVideoUrl: finalUrl });
+              if (done.asset_id) {
+                setJob((prev) => prev && prev.id === jobId
+                  ? { ...prev, assetId: done.asset_id }
+                  : prev);
+              }
             } catch (e) { console.warn("[director-complete-job]", e); }
           } else {
             console.warn("[director-poll-job] status=done but final_video_url missing");
@@ -177,9 +190,12 @@ function VideoFlow() {
       const r = await directorApi.generateStoryboard({
         shopId,
         script, // pass original hook+scenes+outro script
-        imageUrls,
-        aspect,
+        pickedAssets,
+        // Same character choice as the eventual render — storyboard must
+        // reuse it so the reference character matches every scene image.
+        selectedCharacter: characterMode === "library" ? selectedCharacter : null,
         style,
+        realism,
       });
       const nextClips = clipsFromScript(r.script);
       if (nextClips.length !== clips.length) {
