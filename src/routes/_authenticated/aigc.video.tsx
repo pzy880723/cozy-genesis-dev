@@ -577,11 +577,13 @@ function ScriptShotList({ script, clips }: { script: DirectorScript; clips: Dire
   );
 }
 
-function StoryboardList({ clips, frames, sbBusy }: { clips: DirectorClip[]; frames: string[]; sbBusy: boolean }) {
+function StoryboardList({ clips, frames, sbBusy }: { clips: DirectorClip[]; frames: (string | null)[]; sbBusy: boolean }) {
   return (
     <div className="grid gap-2">
       {clips.map((s, i) => {
-        const url = frames[i];
+        // Positional lookup — frames must NEVER be filtered/compacted upstream,
+        // otherwise shot #2's storyboard would render at shot #1's slot.
+        const url = frames[i] ?? null;
         return (
           <div key={i} className="flex gap-3 rounded-md border border-border bg-card p-3">
             <div className="h-24 w-24 shrink-0 overflow-hidden rounded-md bg-secondary">
