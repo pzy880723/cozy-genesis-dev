@@ -18,7 +18,6 @@ import { Route as AuthenticatedPublishRouteImport } from './routes/_authenticate
 import { Route as AuthenticatedAssetsRouteImport } from './routes/_authenticated/assets'
 import { Route as AuthenticatedAccountsRouteImport } from './routes/_authenticated/accounts'
 import { Route as AuthenticatedAigcIndexRouteImport } from './routes/_authenticated/aigc.index'
-import { Route as ApiDebugSelfCronTickRouteImport } from './routes/api/_debug/self-cron-tick'
 import { Route as AuthenticatedAigcVideoRouteImport } from './routes/_authenticated/aigc.video'
 import { Route as AuthenticatedAigcOneclickRouteImport } from './routes/_authenticated/aigc.oneclick'
 import { Route as AuthenticatedAigcImageRouteImport } from './routes/_authenticated/aigc.image'
@@ -71,11 +70,6 @@ const AuthenticatedAigcIndexRoute = AuthenticatedAigcIndexRouteImport.update({
   path: '/aigc/',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
-const ApiDebugSelfCronTickRoute = ApiDebugSelfCronTickRouteImport.update({
-  id: '/api/_debug/self-cron-tick',
-  path: '/api/self-cron-tick',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const AuthenticatedAigcVideoRoute = AuthenticatedAigcVideoRouteImport.update({
   id: '/aigc/video',
   path: '/aigc/video',
@@ -126,7 +120,6 @@ export interface FileRoutesByFullPath {
   '/aigc/image': typeof AuthenticatedAigcImageRoute
   '/aigc/oneclick': typeof AuthenticatedAigcOneclickRoute
   '/aigc/video': typeof AuthenticatedAigcVideoRoute
-  '/api/self-cron-tick': typeof ApiDebugSelfCronTickRoute
   '/aigc/': typeof AuthenticatedAigcIndexRoute
   '/api/public/cron/automation-tick': typeof ApiPublicCronAutomationTickRoute
   '/api/public/worker/callback': typeof ApiPublicWorkerCallbackRoute
@@ -144,7 +137,6 @@ export interface FileRoutesByTo {
   '/aigc/image': typeof AuthenticatedAigcImageRoute
   '/aigc/oneclick': typeof AuthenticatedAigcOneclickRoute
   '/aigc/video': typeof AuthenticatedAigcVideoRoute
-  '/api/self-cron-tick': typeof ApiDebugSelfCronTickRoute
   '/aigc': typeof AuthenticatedAigcIndexRoute
   '/api/public/cron/automation-tick': typeof ApiPublicCronAutomationTickRoute
   '/api/public/worker/callback': typeof ApiPublicWorkerCallbackRoute
@@ -164,7 +156,6 @@ export interface FileRoutesById {
   '/_authenticated/aigc/image': typeof AuthenticatedAigcImageRoute
   '/_authenticated/aigc/oneclick': typeof AuthenticatedAigcOneclickRoute
   '/_authenticated/aigc/video': typeof AuthenticatedAigcVideoRoute
-  '/api/_debug/self-cron-tick': typeof ApiDebugSelfCronTickRoute
   '/_authenticated/aigc/': typeof AuthenticatedAigcIndexRoute
   '/api/public/cron/automation-tick': typeof ApiPublicCronAutomationTickRoute
   '/api/public/worker/callback': typeof ApiPublicWorkerCallbackRoute
@@ -184,7 +175,6 @@ export interface FileRouteTypes {
     | '/aigc/image'
     | '/aigc/oneclick'
     | '/aigc/video'
-    | '/api/self-cron-tick'
     | '/aigc/'
     | '/api/public/cron/automation-tick'
     | '/api/public/worker/callback'
@@ -202,7 +192,6 @@ export interface FileRouteTypes {
     | '/aigc/image'
     | '/aigc/oneclick'
     | '/aigc/video'
-    | '/api/self-cron-tick'
     | '/aigc'
     | '/api/public/cron/automation-tick'
     | '/api/public/worker/callback'
@@ -221,7 +210,6 @@ export interface FileRouteTypes {
     | '/_authenticated/aigc/image'
     | '/_authenticated/aigc/oneclick'
     | '/_authenticated/aigc/video'
-    | '/api/_debug/self-cron-tick'
     | '/_authenticated/aigc/'
     | '/api/public/cron/automation-tick'
     | '/api/public/worker/callback'
@@ -231,7 +219,6 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   AuthRoute: typeof AuthRouteWithChildren
-  ApiDebugSelfCronTickRoute: typeof ApiDebugSelfCronTickRoute
   ApiPublicCronAutomationTickRoute: typeof ApiPublicCronAutomationTickRoute
   ApiPublicWorkerCallbackRoute: typeof ApiPublicWorkerCallbackRoute
   ApiPublicWorkerCronTickRoute: typeof ApiPublicWorkerCronTickRoute
@@ -301,13 +288,6 @@ declare module '@tanstack/react-router' {
       fullPath: '/aigc/'
       preLoaderRoute: typeof AuthenticatedAigcIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/api/_debug/self-cron-tick': {
-      id: '/api/_debug/self-cron-tick'
-      path: '/api/self-cron-tick'
-      fullPath: '/api/self-cron-tick'
-      preLoaderRoute: typeof ApiDebugSelfCronTickRouteImport
-      parentRoute: typeof rootRouteImport
     }
     '/_authenticated/aigc/video': {
       id: '/_authenticated/aigc/video'
@@ -403,7 +383,6 @@ const AuthRouteWithChildren = AuthRoute._addFileChildren(AuthRouteChildren)
 const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   AuthRoute: AuthRouteWithChildren,
-  ApiDebugSelfCronTickRoute: ApiDebugSelfCronTickRoute,
   ApiPublicCronAutomationTickRoute: ApiPublicCronAutomationTickRoute,
   ApiPublicWorkerCallbackRoute: ApiPublicWorkerCallbackRoute,
   ApiPublicWorkerCronTickRoute: ApiPublicWorkerCronTickRoute,
