@@ -67,6 +67,8 @@ export type MarketingCharacter = {
 export type PickedAssetRef = {
   id: string;
   url: string;
+  summary?: string;
+  category?: string | null;
   thumbnail_url?: string | null;
 };
 
@@ -123,12 +125,15 @@ export type DirectorJob = {
   id: string;
   status: string; // queued | running | done | failed | ...
   final_video_url?: string | null;
+  error_message?: string | null;
   [k: string]: unknown;
 };
 
 export type DirectorPollResult = {
   job: DirectorJob;
   shots: unknown[];
+  /** Root-level progress (0–100) — the backend puts it OUTSIDE `job`. */
+  progress?: number;
   raw: Record<string, unknown>;
 };
 
@@ -145,8 +150,15 @@ export function unwrapDirectorScriptResponse(raw: unknown): DirectorScript {
   return s;
 }
 
-/** Unwrap storyboard-marketing-video → { ok, script, frames }. */
-export function unwrapStoryboardResponse(raw: unknown): { script: DirectorScript; frames: string[] } {
+/**
+ * Unwrap storyboard-marketing-video → { ok, script, frames }.
+ * Backend frames shape: `{ scene_index, url: string|null, error?, key }[]`.
+ * We MUST preserve positional alignment by scene_index — a null in the middle
+ * cannot collapse the array or shot #2's image will render at shot #1's slot.
+ */
+export function unwrapStoryboardResponse(
+  raw: unknown,
+): { script: DirectorScript; frames: (string | null)[] } {
   const r = (raw ?? {}) as {
     ok?: boolean;
     script?: DirectorScript;
@@ -157,16 +169,37 @@ export function unwrapStoryboardResponse(raw: unknown): { script: DirectorScript
     throw new Error(r.error ?? "storyboard-marketing-video 返回 ok=false");
   }
   if (!r?.script) throw new Error("storyboard-marketing-video 未返回 script");
-  const frames = Array.isArray(r.frames)
-    ? r.frames.map((f) => (typeof f === "string" ? f : (f as { url?: string })?.url ?? ""))
-        .filter((u): u is string => !!u)
-    : [];
+  const rawFrames = Array.isArray(r.frames) ? r.frames : [];
+  // Determine highest scene_index so we can build a positional array whose
+  // length is stable even when trailing frames failed.
+  let maxIdx = -1;
+  for (const f of rawFrames) {
+    const idx = (f as { scene_index?: number })?.scene_index;
+    if (typeof idx === "number" && idx > maxIdx) maxIdx = idx;
+  }
+  const frames: (string | null)[] = Array(maxIdx + 1).fill(null);
+  for (const f of rawFrames) {
+    const rec = f as { scene_index?: number; url?: string | null };
+    if (typeof rec.scene_index !== "number") continue;
+    frames[rec.scene_index] = typeof rec.url === "string" && rec.url ? rec.url : null;
+  }
   return { script: r.script, frames };
 }
 
-/** Unwrap director-poll-job → { ok, job, shots }. */
+/**
+ * Unwrap director-poll-job → { ok, job, shots, progress }.
+ * `progress` is at the ROOT of the response (NOT inside job); `error_message`
+ * lives on `job`. Read both faithfully so the UI can render true progress
+ * and the real failure reason.
+ */
 export function unwrapDirectorPollResponse(raw: unknown): DirectorPollResult {
-  const r = (raw ?? {}) as { ok?: boolean; job?: DirectorJob; shots?: unknown[]; error?: string };
+  const r = (raw ?? {}) as {
+    ok?: boolean;
+    job?: DirectorJob;
+    shots?: unknown[];
+    progress?: number;
+    error?: string;
+  };
   if (r && r.ok === false) {
     throw new Error(r.error ?? "director-poll-job 返回 ok=false");
   }
@@ -176,8 +209,78 @@ export function unwrapDirectorPollResponse(raw: unknown): DirectorPollResult {
   return {
     job: r.job,
     shots: Array.isArray(r.shots) ? r.shots : [],
+    progress: typeof r.progress === "number" ? r.progress : undefined,
     raw: (r ?? {}) as Record<string, unknown>,
   };
+}
+
+// ─── Director complete-job response ──────────────────────────────────────────
+
+export type DirectorCompleteResult = {
+  asset_id?: string;
+  raw: Record<string, unknown>;
+};
+
+/** Unwrap director-complete-job → { ok, asset_id, ... }. */
+export function unwrapDirectorCompleteResponse(raw: unknown): DirectorCompleteResult {
+  const r = (raw ?? {}) as { ok?: boolean; asset_id?: string; error?: string };
+  if (r && r.ok === false) {
+    throw new Error(r.error ?? "director-complete-job 返回 ok=false");
+  }
+  return {
+    asset_id: typeof r?.asset_id === "string" ? r.asset_id : undefined,
+    raw: (r ?? {}) as Record<string, unknown>,
+  };
+}
+
+// ─── Storyboard payload (matches storyboard-marketing-video/index.ts) ────────
+
+export type StoryboardAssetRef = {
+  asset_id: string;
+  index: number;
+  url: string;
+  summary: string;
+  category?: string | null;
+};
+
+export type StoryboardBuildInput = {
+  shopId: string;
+  script: DirectorScript;
+  pickedAssets: PickedAssetRef[];
+  selectedCharacter?: MarketingCharacter | null;
+  style?: string;
+  realism?: string;
+  /** Optional single-shot regenerate list (scene indices). */
+  onlyIndices?: number[];
+};
+
+/**
+ * Build the exact request body storyboard-marketing-video reads:
+ *   { shop_id, script, assets, character, style, realism, only_indices? }
+ * `assets` MUST be a positional array — `assets[clip.image_index]` is how the
+ * backend picks the reference frame for each scene, so `index` in each entry
+ * must equal its array position. Never send `image_urls`/`aspect` here.
+ */
+export function buildStoryboardPayload(input: StoryboardBuildInput): Record<string, unknown> {
+  const assets: StoryboardAssetRef[] = input.pickedAssets.map((a, index) => ({
+    asset_id: a.id,
+    index,
+    url: a.url,
+    summary: a.summary ?? "",
+    category: a.category ?? null,
+  }));
+  const body: Record<string, unknown> = {
+    shop_id: input.shopId,
+    script: input.script,
+    assets,
+    character: input.selectedCharacter ?? null,
+    style: input.style ?? null,
+    realism: input.realism ?? null,
+  };
+  if (Array.isArray(input.onlyIndices) && input.onlyIndices.length > 0) {
+    body.only_indices = input.onlyIndices;
+  }
+  return body;
 }
 
 // ─── Surprise (BOOMER 帮我拍) payloads & response mapping ─────────────────────
@@ -206,7 +309,8 @@ export function buildSurprisePreviewPayload(input: SurprisePreviewInput): Record
     duration: input.duration ?? 15,
     model: input.model ?? DEFAULT_SURPRISE_MODEL,
     resolution: input.resolution ?? "720p",
-    realism: input.realism ?? "real",
+    // Backend only recognizes `photoreal` for realistic Seedance output.
+    realism: input.realism ?? "photoreal",
     preview: true,
   };
 }
@@ -242,7 +346,8 @@ export function buildSurpriseSubmitPayload(input: SurpriseSubmitInput): Record<s
     duration: input.duration ?? 15,
     model: input.model ?? DEFAULT_SURPRISE_MODEL,
     resolution: input.resolution ?? "720p",
-    realism: input.realism ?? "real",
+    // Backend only recognizes `photoreal` for realistic Seedance output.
+    realism: input.realism ?? "photoreal",
     // Pass-through — same references as preview response.
     script: preview.script,
     assets: preview.assets,
