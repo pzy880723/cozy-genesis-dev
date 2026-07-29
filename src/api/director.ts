@@ -8,11 +8,14 @@ import type { Asset } from "@/types";
 import {
   buildDirectorCompletePayload,
   buildDirectorCreatePayload,
+  buildStoryboardPayload,
   DEFAULT_DIRECTOR_MODEL,
+  unwrapDirectorCompleteResponse,
   unwrapDirectorPollResponse,
   unwrapDirectorScriptResponse,
   unwrapStoryboardResponse,
   type DirectorClip,
+  type DirectorCompleteResult,
   type DirectorCreateInput,
   type DirectorJob,
   type DirectorPollResult,
@@ -25,6 +28,7 @@ const USE_MOCKS = import.meta.env.VITE_AIGC_USE_MOCKS === "true";
 
 export type {
   DirectorClip,
+  DirectorCompleteResult,
   DirectorJob,
   DirectorPollResult,
   DirectorScript,
@@ -106,23 +110,16 @@ export const directorApi = {
   async generateStoryboard(input: {
     shopId: string;
     script: DirectorScript;
-    imageUrls: string[];
-    aspect: string;
+    pickedAssets: PickedAssetRef[];
+    selectedCharacter?: MarketingCharacter | null;
     style?: string;
-  }): Promise<{ script: DirectorScript; frames: string[] }> {
+    realism?: string;
+    onlyIndices?: number[];
+  }): Promise<{ script: DirectorScript; frames: (string | null)[] }> {
     if (USE_MOCKS) return { script: input.script, frames: [] };
     const { data, error } = await supabase.functions.invoke(
       "storyboard-marketing-video",
-      {
-        body: {
-          shop_id: input.shopId,
-          // Pass the ORIGINAL script object verbatim.
-          script: input.script,
-          image_urls: input.imageUrls,
-          aspect: input.aspect,
-          style: input.style ?? null,
-        },
-      },
+      { body: buildStoryboardPayload(input) },
     );
     if (error) throw error;
     return unwrapStoryboardResponse(data);
@@ -156,14 +153,14 @@ export const directorApi = {
     return unwrapDirectorPollResponse(data);
   },
 
-  async completeJob(input: { jobId: string; finalVideoUrl: string }): Promise<Record<string, unknown>> {
+  async completeJob(input: { jobId: string; finalVideoUrl: string }): Promise<DirectorCompleteResult> {
     const body = buildDirectorCompletePayload(input);
-    if (USE_MOCKS) return { asset_id: `mock_asset_${Date.now()}` };
+    if (USE_MOCKS) return { asset_id: `mock_asset_${Date.now()}`, raw: {} };
     const { data, error } = await supabase.functions.invoke("director-complete-job", {
       body,
     });
     if (error) throw error;
-    return (data ?? {}) as Record<string, unknown>;
+    return unwrapDirectorCompleteResponse(data);
   },
 
   async listCharacters(shopId: string): Promise<MarketingCharacter[]> {
@@ -197,6 +194,10 @@ export function toPickedAssets(assets: Asset[]): PickedAssetRef[] {
     .map((a) => ({
       id: a.id,
       url: a.outputUrl!,
+      // storyboard-marketing-video reads `summary` + `category` per asset to
+      // pair `clip.image_index` with the right reference frame.
+      summary: a.description ?? a.title ?? "",
+      category: a.category ?? null,
       thumbnail_url: a.thumbnailUrl ?? null,
     }));
 }
