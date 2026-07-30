@@ -5,7 +5,12 @@ import { AppShell } from "@/components/app/AppShell";
 import { PageHeader, Panel } from "@/components/app/PageHeader";
 import { shopsApi } from "@/api/shops";
 import { aigcApi, ONECLICK_MAX_REFS } from "@/api/aigc";
-import { surpriseApi, type SurprisePreview } from "@/api/surprise";
+import {
+  surpriseApi,
+  isCoverTerminal,
+  type CoverStatus,
+  type SurprisePreview,
+} from "@/api/surprise";
 import { toImageUrls } from "@/api/director";
 import {
   ALL_CATEGORY,
@@ -61,13 +66,25 @@ function OneClickPage() {
 
   const [phase, setPhase] = useState<Phase>("idle");
   const [preview, setPreview] = useState<SurprisePreview | null>(null);
-  const [job, setJob] = useState<{ id: string; progress?: number; videoUrl?: string; error?: string } | null>(null);
+  const [job, setJob] = useState<{
+    id: string;
+    progress?: number;
+    videoUrl?: string;
+    error?: string;
+    coverStatus?: CoverStatus;
+    coverUrl?: string;
+    coverError?: string;
+    coverProgress?: number;
+  } | null>(null);
   const [errMsg, setErrMsg] = useState<string>("");
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // 渲染轮询（poll-marketing-video）
+  // 渲染轮询（poll-marketing-video）——视频完成后继续轮询封面队列
   useEffect(() => {
-    if (!job || phase !== "rendering") return;
+    if (!job) return;
+    const coverPending =
+      phase === "done" && !isCoverTerminal(job.coverStatus ?? "none");
+    if (phase !== "rendering" && !coverPending) return;
     const jobId = job.id;
     pollRef.current = setInterval(async () => {
       try {
@@ -77,6 +94,11 @@ function OneClickPage() {
           progress: typeof next.progress === "number" ? next.progress : prev.progress,
           videoUrl: (next.video_url as string | undefined) ?? prev.videoUrl,
           error: (next.error as string | undefined) ?? prev.error,
+          coverStatus: next.cover_status ?? prev.coverStatus ?? "none",
+          coverUrl: next.cover_url ?? prev.coverUrl,
+          coverError: next.cover_error ?? prev.coverError,
+          coverProgress:
+            typeof next.cover_progress === "number" ? next.cover_progress : prev.coverProgress,
         }) : prev);
         if (next.status === "done") setPhase("done");
         if (next.status === "failed") {
@@ -89,7 +111,7 @@ function OneClickPage() {
       }
     }, 2500);
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
-  }, [job?.id, phase]);
+  }, [job?.id, phase, job?.coverStatus]);
 
   const autoPick = async () => {
     if (!shopId) return;
