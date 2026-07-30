@@ -5,7 +5,12 @@ import { AppShell } from "@/components/app/AppShell";
 import { PageHeader, Panel } from "@/components/app/PageHeader";
 import { shopsApi } from "@/api/shops";
 import { aigcApi, ONECLICK_MAX_REFS } from "@/api/aigc";
-import { surpriseApi, type SurprisePreview } from "@/api/surprise";
+import {
+  surpriseApi,
+  isCoverTerminal,
+  type CoverStatus,
+  type SurprisePreview,
+} from "@/api/surprise";
 import { toImageUrls } from "@/api/director";
 import {
   ALL_CATEGORY,
@@ -61,13 +66,25 @@ function OneClickPage() {
 
   const [phase, setPhase] = useState<Phase>("idle");
   const [preview, setPreview] = useState<SurprisePreview | null>(null);
-  const [job, setJob] = useState<{ id: string; progress?: number; videoUrl?: string; error?: string } | null>(null);
+  const [job, setJob] = useState<{
+    id: string;
+    progress?: number;
+    videoUrl?: string;
+    error?: string;
+    coverStatus?: CoverStatus;
+    coverUrl?: string;
+    coverError?: string;
+    coverProgress?: number;
+  } | null>(null);
   const [errMsg, setErrMsg] = useState<string>("");
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // 渲染轮询（poll-marketing-video）
+  // 渲染轮询（poll-marketing-video）——视频完成后继续轮询封面队列
   useEffect(() => {
-    if (!job || phase !== "rendering") return;
+    if (!job) return;
+    const coverPending =
+      phase === "done" && !isCoverTerminal(job.coverStatus ?? "none");
+    if (phase !== "rendering" && !coverPending) return;
     const jobId = job.id;
     pollRef.current = setInterval(async () => {
       try {
@@ -77,6 +94,11 @@ function OneClickPage() {
           progress: typeof next.progress === "number" ? next.progress : prev.progress,
           videoUrl: (next.video_url as string | undefined) ?? prev.videoUrl,
           error: (next.error as string | undefined) ?? prev.error,
+          coverStatus: next.cover_status ?? prev.coverStatus ?? "none",
+          coverUrl: next.cover_url ?? prev.coverUrl,
+          coverError: next.cover_error ?? prev.coverError,
+          coverProgress:
+            typeof next.cover_progress === "number" ? next.cover_progress : prev.coverProgress,
         }) : prev);
         if (next.status === "done") setPhase("done");
         if (next.status === "failed") {
@@ -89,7 +111,7 @@ function OneClickPage() {
       }
     }, 2500);
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
-  }, [job?.id, phase]);
+  }, [job?.id, phase, job?.coverStatus]);
 
   const autoPick = async () => {
     if (!shopId) return;
@@ -393,7 +415,16 @@ function ResultPanel({
 }: {
   phase: Phase;
   preview: SurprisePreview | null;
-  job: { id: string; progress?: number; videoUrl?: string; error?: string } | null;
+  job: {
+    id: string;
+    progress?: number;
+    videoUrl?: string;
+    error?: string;
+    coverStatus?: CoverStatus;
+    coverUrl?: string;
+    coverError?: string;
+    coverProgress?: number;
+  } | null;
   errMsg: string;
   onRetry: () => void;
   onSwapPics: () => void;
@@ -478,12 +509,47 @@ function ResultPanel({
       {done && job?.videoUrl && (
         <div className="mt-3 space-y-3">
           <video src={job.videoUrl} controls playsInline className="max-h-96 w-full rounded-md bg-black" />
+          {job.coverStatus && job.coverStatus !== "none" && (
+            <div className="rounded-md border border-border bg-white p-2">
+              <div className="flex items-center gap-2 text-[11px] font-bold text-graphite">
+                {job.coverStatus === "succeeded"
+                  ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                  : job.coverStatus === "failed"
+                    ? <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />
+                    : <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />}
+                <span>
+                  {job.coverStatus === "succeeded"
+                    ? "人物封面已生成"
+                    : job.coverStatus === "failed"
+                      ? `封面生成失败${job.coverError ? `：${job.coverError}` : ""}`
+                      : "正在生成人物封面（非视频截帧）"}
+                </span>
+                {typeof job.coverProgress === "number" && !isCoverTerminal(job.coverStatus) && (
+                  <span className="ml-auto">{Math.round(job.coverProgress)}%</span>
+                )}
+              </div>
+              {job.coverStatus === "succeeded" && job.coverUrl && (
+                <img
+                  src={job.coverUrl}
+                  alt="AI 人物封面"
+                  className="mt-2 aspect-square w-32 rounded object-cover"
+                />
+              )}
+            </div>
+          )}
           <div className="flex flex-wrap gap-2">
             <a
               href={job.videoUrl}
               download
               className="inline-flex h-9 items-center gap-1.5 rounded-md bg-primary px-4 text-xs font-bold text-primary-foreground"
             >下载 MP4</a>
+            {job.coverStatus === "succeeded" && job.coverUrl && (
+              <a
+                href={job.coverUrl}
+                download
+                className="inline-flex h-9 items-center gap-1.5 rounded-md border border-border bg-white px-4 text-xs font-bold text-graphite hover:bg-secondary"
+              >下载封面</a>
+            )}
             <Link
               to="/publish"
               className="inline-flex h-9 items-center gap-1.5 rounded-md border border-border bg-white px-4 text-xs font-bold text-graphite hover:bg-secondary"

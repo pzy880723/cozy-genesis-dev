@@ -35,8 +35,43 @@ export type SurprisePollResult = {
   video_url?: string;
   progress?: number;
   error?: string;
+  /**
+   * Post-video cover queue (fallback_notes.cover_generation on the job row).
+   * Legacy jobs created before the cover queue have no cover_generation, so
+   * poll-marketing-video omits these fields — treat that as "none".
+   */
+  cover_status?: CoverStatus;
+  cover_url?: string;
+  cover_error?: string;
+  cover_progress?: number;
   raw: Record<string, unknown>;
 };
+
+/** "none" = legacy job / cover queue not applicable. */
+export type CoverStatus =
+  | "none"
+  | "queued"
+  | "generating"
+  | "succeeded"
+  | "failed";
+
+const COVER_STATUSES: CoverStatus[] = [
+  "none",
+  "queued",
+  "generating",
+  "succeeded",
+  "failed",
+];
+
+export function normalizeCoverStatus(v: unknown): CoverStatus {
+  return typeof v === "string" && (COVER_STATUSES as string[]).includes(v)
+    ? (v as CoverStatus)
+    : "none";
+}
+
+export function isCoverTerminal(s: CoverStatus): boolean {
+  return s === "none" || s === "succeeded" || s === "failed";
+}
 
 export const surpriseApi = {
   async preview(input: SurprisePreviewInput): Promise<SurprisePreview> {
@@ -81,6 +116,11 @@ export const surpriseApi = {
       video_url: raw.video_url as string | undefined,
       progress: typeof raw.progress === "number" ? raw.progress : undefined,
       error: raw.error as string | undefined,
+      cover_status: normalizeCoverStatus(raw.cover_status),
+      cover_url: (raw.cover_url as string | undefined) || undefined,
+      cover_error: (raw.cover_error as string | undefined) || undefined,
+      cover_progress:
+        typeof raw.cover_progress === "number" ? raw.cover_progress : undefined,
       raw,
     };
   },
