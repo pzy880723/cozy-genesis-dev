@@ -1,60 +1,50 @@
-# 诊断：`shadow_user_create_failed`（只读结论）
+# 只读核查结果 · Seedance 视频通道（中信泰富 15 秒女博主带逛）
 
-## 范围声明
-`erp-aigc-session` Edge Function 的源码位于 ERP boomeroff 后端仓库，本仓库（AIGC 前端）不持有其实现，只持有：
-- 目标表定义：`docs/migrations/2026-07-19-erp-sso.sql` → `public.erp_user_links`
-- 调用方：`src/lib/erp-sso.functions.ts`（透传 ticket，只解读返回 code）
+本轮未改任何代码、未部署、未创建任何视频任务。以下为核实到的非敏感证据。
 
-因此以下诊断基于契约、表结构和 Supabase Auth Admin API 已知语义推断，未直接读到该 Edge Function 的运行时日志与源码。
+## 1. 后端归属
 
-## code=`shadow_user_create_failed` 的精确触发条件
-按命名与流程还原，该 code 只在 Edge Function 的"影子用户创建"分支被抛出，即：
-在 ticket 验证通过、ERP 侧 exchange 返回真实账号资料之后，为该 ERP 用户在 AIGC 的 `auth.users` 建立/找回对应影子账号的这一步失败——通常是 `supabase.auth.admin.createUser({ email, phone, email_confirm: true, user_metadata, app_metadata })` 返回非 2xx，Function 捕获后统一映射为该 code + HTTP 500。
+- 前端项目：本项目（AIGC 前端，cozy-genesis-dev）。
+- 后端归属：共享 Supabase 项目 `narqwgwpqglathwtyevz`（对应 Lovable 项目 **Genie Lamp Descriptions** / 营销中心）。前端只用公开 anon key 连它（`src/integrations/shared-db/client.ts`），所有生成逻辑都在那边的 Edge Function 里。本会话对该后端只有只读权限。
 
-普通超级管理员测试账号能过，唯一变量是该 ERP 账号在 AIGC 端的既有数据。
+## 2. 供应商模型映射
 
-## 该"实际 ERP 超级管理员账号"最可能命中的冲突（按概率排序）
+- 前端两条通道都把 `model` 默认写成 `"seedance-2-pro"`（`src/api/director-payload.ts` 的 `DEFAULT_DIRECTOR_MODEL` 与 `DEFAULT_SURPRISE_MODEL`），一键出片页面另有 fast/pro 选择，自定义导演台页面写死 pro。
+- **这只是前端传给后端的字符串**。它到底映射到火山/即梦哪个真实模型 ID、是不是 Seedance 2.0，只写在后端 Edge Function 源码里，本项目里没有映射表，本会话读不到该后端源码，因此**未经证实**——需要在 Genie 项目会话里核对一次。
 
-1. **邮箱已在 `auth.users` 存在，但没有对应 `erp_user_links` 行**
-   Supabase Admin `createUser` 对已注册邮箱返回 422 `email_exists` / "A user with this email address has already been registered"。这是最常见的一类："同一个人以前直接在 AIGC 注册过 / 早期联调残留 / 另一个 ERP 用户共用同一邮箱"。Function 若只做 `createUser` 而没有"存在即认领"分支，就会直接抛 `shadow_user_create_failed`。
+## 3. 是否可运行
 
-2. **手机号唯一冲突**
-   若 Function 同时写入 `phone` 且启用了 phone provider，超级管理员账号在 ERP 里通常带手机号，命中 `phone_exists` 同样报同一 code。
+- 六个函数端点均可达（预检返回 200）：`surprise-marketing-video`、`poll-marketing-video`、`generate-marketing-video-script`、`storyboard-marketing-video`、`director-create-job`、`director-poll-job`。
+- 可达不等于可跑通：实际执行需要登录态 + 后端供应商密钥，未实测（按要求不发起生成）。
 
-3. **`erp_user_links` 侧唯一键冲突（半残留状态）**
-   表上有 `unique (aigc_user_id)` 和 `erp_user_id primary key`。历史迁移或早期人工测试可能留下：
-   - 同一 `aigc_user_id` 已被另一个 `erp_user_id` 占用（新 ERP super_admin 想复用已存在的 auth 用户时被这个唯一键顶回来）；
-   - 或表里已有该 `erp_user_id`，但指向一个已被删除的 `aigc_user_id`（`on delete cascade` 会连带删掉行，通常不会留下悬挂，但若删除路径绕过外键就会残留）。
-   这些若发生在 upsert 之前的"确保 auth 用户存在"步骤之后，也会被同一 catch 归并到 `shadow_user_create_failed`。
+## 4. 两个生成入口与必填字段
 
-4. **Auth 侧字段被 ERP 数据触发校验失败**
-   例如邮箱为 ERP 内部占位（非法格式）、`user_metadata` 体积超限、`app_metadata` 里 permissions 数组过长——普通测试账号数据干净，真实超管权限/门店范围大，更容易踩到。
+一键出片（BOOMER 帮我拍，单段 15s）：
+- 预览：`surprise-marketing-video`，body `shop_id / video_type / category / aspect / image_urls / duration=15 / model / resolution=720p / realism=photoreal / preview=true`
+- 提交：同函数，`preview=false`，并把预览返回的 `script / assets / picked_assets / style` 原样回传
+- 轮询：`poll-marketing-video`，body `{ job_id }`，`status=succeeded` 时取 `video_url`
 
-以（1）为最主流原因，与"测试账号通过、真实超管失败"的表征最吻合。
+自定义导演台（多镜）：`generate-marketing-video-script` → `storyboard-marketing-video` → `director-create-job` → `director-poll-job` → `director-complete-job`。
 
-## 只读验证步骤（不改任何东西）
-在共享 Supabase (`narqwgwpqglathwtyevz`) 里，按顺序读：
+## 5. 鉴权方式
 
-1. Edge Function 日志（Dashboard → Edge Functions → `erp-aigc-session` → Logs），过滤最近一次 500，看 catch 打印的底层 Auth 错误 message（`email_exists` / `phone_exists` / `duplicate key value violates unique constraint "..."`）——这一步就能定性。
-2. `auth.users` 中按该 ERP 超管的邮箱/手机号查是否已存在 `id`。
-3. `public.erp_user_links` 中按 `erp_user_id` 与上一步查到的 `aigc_user_id` 双向查是否已有行、是否互相错位。
+- 页面级：`/_authenticated` 路由在进入前调用 `supabase.auth.getUser()`，无会话跳 `/auth`；生产走 ERP SSO（`/auth/erp`，ticket 换 magiclink token 后 `verifyOtp`）。
+- 接口级：`supabase.functions.invoke` 自动带 anon key + 当前用户 JWT。
 
-以上仅 SELECT，不涉及写入。
+## 6. 中信泰富素材 / 门头
 
-## 最小安全修复方案（待批准后在 ERP 后端仓库实施；本仓库不改）
-目标：把"创建影子用户"改造成**幂等的"确保存在并认领"**，不放宽任何权限。
+- 门店已在库：`shops` 表有「上海中信泰富店」（id `72c80d98-…`，active，排序第 1）。
+- 素材：`marketing_assets`、`marketing_video_jobs`、`marketing_characters` 在匿名身份下一律返回空数组（受 RLS 保护），**因此无法在无登录状态下确认门头照是否已入库**。
+- 注意品牌资料里写的是「无门框、无门头墙、开放式陈列」的商场铺位，而现有探店规则又要求首镜必须是门头照——这两条需要你确认以哪张实拍图为准。
 
-1. 在 Edge Function 的影子用户环节先按 `erp_user_id` 查 `erp_user_links`：
-   - 命中 → 直接用其 `aigc_user_id`；
-   - 未命中 → 按邮箱（必要时手机号）在 `auth.users` 查：
-     - 存在 → 复用该 `aigc_user_id`；
-     - 不存在 → `admin.createUser`。
-2. 用这个 `aigc_user_id` 对 `erp_user_links` 做 `upsert on conflict (erp_user_id)`；若同时命中 `unique (aigc_user_id)` 且对应的 `erp_user_id` 不同，视为数据异常，返回明确 code（如 `shadow_user_conflict`），不要静默覆写。
-3. `admin.updateUserById` 刷新 `app_metadata`（roles/permissions/erp_user_id/shops）与 `user_metadata`（显示字段），失败即中止并返回明确 code。
-4. 把当前笼统的 `shadow_user_create_failed` 细分至少为：`email_exists_unlinked` / `phone_exists_unlinked` / `link_conflict` / `auth_create_failed` / `auth_update_failed`，前端 `ERR_MSG` 相应扩展中文提示（本仓库改动仅限文案映射表）。
-5. 不改表结构、不改 RLS、不放开 anon/authenticated 权限、不打印 secret 或 PII。
+## 7. 端到端能否由我运行
 
-## 不做的事
-- 不修改本仓库任何代码、路由、secrets。
-- 不执行任何数据库写操作。
-- 不回显密钥、ticket、邮箱、手机号或用户 ID。
+可以，但需要一个有效登录会话（预览环境里你先登录一次即可注入）。目前会话没有该门店的可读素材权限，所以还不能确认参考图。按要求本轮不提交任何付费任务。
+
+## 下一步（等你确认后再执行）
+
+1. 你在预览里登录一次，我读取中信泰富的素材列表，确认门头照是否存在、拿到它的 URL。
+2. 如无门头照：由你补拍上传，或改用店内入口图作首镜。
+3. 我用一键出片通道跑 `preview=true`（不计费成片），把脚本 + 参考帧顺序给你审；首帧固定为门头照。
+4. 你点头后再提交 `preview=false` 的 15 秒渲染任务并轮询取片。
+5. 另需在 Genie 项目会话核对 `seedance-2-pro` 的真实供应商模型映射。
